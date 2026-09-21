@@ -496,11 +496,19 @@ function DSHubLibrary.Init(options)
         layout.SortOrder = Enum.SortOrder.LayoutOrder
         layout.Padding = UDim.new(0, 7)
 
-        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            column.Size = UDim2.new(0.5, -5, 0, layout.AbsoluteContentSize.Y)
-        end)
+        local function update()
+            column.Size = UDim2.new(
+                column:GetAttribute("ColumnScale") or 0.5,
+                -5,
+                0,
+                math.max(1, layout.AbsoluteContentSize.Y)
+            )
+        end
 
-        return layout
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(update)
+        task.defer(update)
+
+        return layout, update
     end
 
     local function createGroup(parent, title)
@@ -963,13 +971,14 @@ function DSHubLibrary.Init(options)
         Page.ClipsDescendants = true
         Page.CanvasSize = UDim2.new(0, 0, 0, 0)
         Page.ScrollingDirection = Enum.ScrollingDirection.Y
+        Page.ElasticBehavior = Enum.ElasticBehavior.WhenScrollable
 
         local Content = Instance.new("Frame", Page)
         Content.Name = "Columns"
         Content.BackgroundTransparency = 1
         Content.Position = UDim2.new(0, 1, 0, 1)
         Content.Size = UDim2.new(1, -2, 0, 0)
-        Content.AutomaticSize = Enum.AutomaticSize.Y
+        Content.AutomaticSize = Enum.AutomaticSize.None
         Content.ClipsDescendants = false
 
         local left = Instance.new("Frame", Content)
@@ -978,7 +987,7 @@ function DSHubLibrary.Init(options)
         left.Size = UDim2.new(0.5, -5, 0, 0)
         left.BackgroundTransparency = 1
         left.ClipsDescendants = false
-        left.AutomaticSize = Enum.AutomaticSize.Y
+        left.AutomaticSize = Enum.AutomaticSize.None
 
         local right = Instance.new("Frame", Content)
         right.Name = "RightColumn"
@@ -986,15 +995,22 @@ function DSHubLibrary.Init(options)
         right.Size = UDim2.new(0.5, -5, 0, 0)
         right.BackgroundTransparency = 1
         right.ClipsDescendants = false
-        right.AutomaticSize = Enum.AutomaticSize.Y
+        right.AutomaticSize = Enum.AutomaticSize.None
+
+        left:SetAttribute("ColumnScale", 0.5)
+        right:SetAttribute("ColumnScale", 0.5)
 
         local leftLayout = setupColumn(left)
         local rightLayout = setupColumn(right)
 
         local function updatePage()
-            local height = math.max(leftLayout.AbsoluteContentSize.Y, rightLayout.AbsoluteContentSize.Y) + 8
-            Content.Size = UDim2.new(1, -2, 0, height)
-            Page.CanvasSize = UDim2.new(0, 0, 0, height + 6)
+            local height = math.max(
+                leftLayout.AbsoluteContentSize.Y,
+                rightLayout.AbsoluteContentSize.Y
+            ) + 8
+
+            Content.Size = UDim2.new(1, -2, 0, math.max(1, height))
+            Page.CanvasSize = UDim2.new(0, 0, 0, math.max(1, height + 6))
         end
 
         leftLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updatePage)
@@ -1009,7 +1025,32 @@ function DSHubLibrary.Init(options)
             Icon = IconLabel,
             _leftColumn = left,
             _rightColumn = right,
+            Sides = {left, right},
         }
+
+        function TabElements:RefreshSides()
+            local leftWidth = self.Sides[1].Visible and 0.5 or 1
+            local rightVisible = self.Sides[2].Visible
+
+            self.Sides[1].Size = UDim2.new(
+                leftWidth,
+                -5,
+                0,
+                math.max(1, leftLayout.AbsoluteContentSize.Y)
+            )
+
+            if rightVisible then
+                self.Sides[2].Position = UDim2.new(0.5, 5, 0, 0)
+                self.Sides[2].Size = UDim2.new(
+                    0.5,
+                    -5,
+                    0,
+                    math.max(1, rightLayout.AbsoluteContentSize.Y)
+                )
+            end
+
+            updatePage()
+        end
 
         function TabElements:CreateToggle(title, defaultState, callback)
             -- Legacy API retained for compatibility.
@@ -1044,10 +1085,10 @@ function DSHubLibrary.Init(options)
 
         -- Bind the stable group API directly to this tab.
         function TabElements:AddLeftGroupbox(title)
-            return createControls(self, title)
+            return createControls(self._leftColumn, title)
         end
         function TabElements:AddRightGroupbox(title)
-            return createControls(self, title)
+            return createControls(self._rightColumn, title)
         end
         function TabElements:AddLeftTabbox()
             local box = {}
@@ -1075,7 +1116,10 @@ function DSHubLibrary.Init(options)
     local runtime = Window
     runtime.Options = optionRegistry
     runtime.Toggles = toggleRegistry
-    runtime.IsMobile = UserInputService.TouchEnabled
+    local initialCamera = workspace.CurrentCamera
+    runtime.IsMobile = initialCamera
+        and initialCamera.ViewportSize.X < 700
+        or false
     runtime.Unloaded = false
     runtime.OnUnloadCallbacks = {}
     local notifyHolder = Instance.new("Frame", ScreenGui)
