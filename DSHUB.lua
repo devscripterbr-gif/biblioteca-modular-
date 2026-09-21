@@ -64,6 +64,10 @@ if not okInit or type(Window) ~= "table" or type(Window.CreateTab) ~= "function"
     error("DS HUB v1.0: Library.Init falhou ou não retornou Window: " .. tostring(Window))
 end
 
+local library = Window
+local options = library.Options or {}
+local toggles = library.Toggles or {}
+
 -- Abas são criadas imediatamente, antes de qualquer módulo do jogo ser carregado.
 -- Isso evita a janela vazia caso um WaitForChild/require demore.
 local MainTab = Window:CreateTab("Main", "⚡")
@@ -934,9 +938,6 @@ task.spawn(function()
 end)
 
 -- Window é a biblioteca pública; todas as funções abaixo continuam neste arquivo.
-local library = Window
-local options = library.Options or {}
-local toggles = library.Toggles or {}
 library.Unloaded = false
 
 env.DSHubMainRunning = true
@@ -8829,39 +8830,39 @@ function library.AutoFarm:Destroy(preserve)
 end
 
 -- As abas já foram criadas no início. Aqui apenas usamos a biblioteca existente.
-local window = library
+window = library
 
 if library.LobbyShop:IsLobby() then
     library.LobbyShop.Box = tabs.Main:AddLeftGroupbox("Lobby Shop", "store")
 end
 
-local lootBox = tabs.Main:AddLeftGroupbox("Loot", "package-open")
-local sellBox = tabs.Main:AddLeftGroupbox("Money", "badge-dollar-sign")
+lootBox = tabs.Main:AddLeftGroupbox("Loot", "package-open")
+sellBox = tabs.Main:AddLeftGroupbox("Money", "badge-dollar-sign")
 tabs.RemoteShopBox = tabs.Main:AddLeftGroupbox("Remote Shop", "shopping-cart")
-local npcBox = library.IsMobile and tabs.Main:AddLeftGroupbox("NPCs", "users") or tabs.Main:AddRightGroupbox("NPCs", "users")
+npcBox = library.IsMobile and tabs.Main:AddLeftGroupbox("NPCs", "users") or tabs.Main:AddRightGroupbox("NPCs", "users")
 bringItems.Box = library.IsMobile and tabs.Main:AddLeftGroupbox("Bring Items", "package-plus") or tabs.Main:AddRightGroupbox("Bring Items", "package-plus")
-local utilityBox = library.IsMobile and tabs.Main:AddLeftGroupbox("Utility", "wrench") or tabs.Main:AddRightGroupbox("Utility", "wrench")
-local movementBox = tabs.Player:AddLeftGroupbox("Movement", "gauge")
-local worldBox = library.IsMobile and tabs.Player:AddLeftGroupbox("Camera and World", "camera") or tabs.Player:AddRightGroupbox("Camera and World", "camera")
+utilityBox = library.IsMobile and tabs.Main:AddLeftGroupbox("Utility", "wrench") or tabs.Main:AddRightGroupbox("Utility", "wrench")
+movementBox = tabs.Player:AddLeftGroupbox("Movement", "gauge")
+worldBox = library.IsMobile and tabs.Player:AddLeftGroupbox("Camera and World", "camera") or tabs.Player:AddRightGroupbox("Camera and World", "camera")
 punchMods.Box = library.IsMobile and tabs.Player:AddLeftGroupbox("Melee Mods", "hand") or tabs.Player:AddRightGroupbox("Melee Mods", "hand")
 teleports.LocationBox = tabs.Teleports:AddLeftGroupbox("Locations", "map-pin")
 teleports.EntityBox = library.IsMobile and tabs.Teleports:AddLeftGroupbox("Entities", "users") or tabs.Teleports:AddRightGroupbox("Entities", "users")
-local carPerformanceBox = tabs.Car:AddLeftGroupbox("Performance", "gauge")
-local carUtilityBox = library.IsMobile and tabs.Car:AddLeftGroupbox("Vehicle Utility", "wrench") or tabs.Car:AddRightGroupbox("Vehicle Utility", "wrench")
-local weaponBox = tabs.Weapon:AddLeftGroupbox("Weapon Mods", "crosshair")
-local silentAimBox = library.IsMobile and tabs.Weapon:AddLeftGroupbox("Silent Aim", "target") or tabs.Weapon:AddRightGroupbox("Silent Aim", "target")
+carPerformanceBox = tabs.Car:AddLeftGroupbox("Performance", "gauge")
+carUtilityBox = library.IsMobile and tabs.Car:AddLeftGroupbox("Vehicle Utility", "wrench") or tabs.Car:AddRightGroupbox("Vehicle Utility", "wrench")
+weaponBox = tabs.Weapon:AddLeftGroupbox("Weapon Mods", "crosshair")
+silentAimBox = library.IsMobile and tabs.Weapon:AddLeftGroupbox("Silent Aim", "target") or tabs.Weapon:AddRightGroupbox("Silent Aim", "target")
 library.AutoFarm.ControlBox = tabs.AutoFarm:AddLeftGroupbox("Automation", "bot")
 library.AutoFarm.StatsBox = tabs.AutoFarm:AddLeftGroupbox("Session Statistics", "chart-no-axes-combined")
 library.AutoFarm.RunBox = library.IsMobile and tabs.AutoFarm:AddLeftGroupbox("Run Details", "route") or tabs.AutoFarm:AddRightGroupbox("Run Details", "route")
 library.AutoFarm.WebhookBox = library.IsMobile and tabs.AutoFarm:AddLeftGroupbox("Webhook", "webhook") or tabs.AutoFarm:AddRightGroupbox("Webhook", "webhook")
-local espLeft = tabs.ESP:AddLeftTabbox()
-local espRight = library.IsMobile and espLeft or tabs.ESP:AddRightTabbox()
-local espStyleBox = espLeft:AddTab("Style")
-local espItemBox = espRight:AddTab("Items")
-local espPlayerBox = espRight:AddTab("Players")
-local espNPCBox = espRight:AddTab("NPCs")
-local espWorldBox = espRight:AddTab("World")
-local menuBox = tabs.Settings:AddLeftGroupbox("Menu", "wrench")
+espLeft = tabs.ESP:AddLeftTabbox()
+espRight = library.IsMobile and espLeft or tabs.ESP:AddRightTabbox()
+espStyleBox = espLeft:AddTab("Style")
+espItemBox = espRight:AddTab("Items")
+espPlayerBox = espRight:AddTab("Players")
+espNPCBox = espRight:AddTab("NPCs")
+espWorldBox = espRight:AddTab("World")
+menuBox = tabs.Settings:AddLeftGroupbox("Menu", "wrench")
 
 library.AutoFarm.ControlBox:AddToggle("RunawaysAutoFarm", {
     Text = "Auto Farm",
