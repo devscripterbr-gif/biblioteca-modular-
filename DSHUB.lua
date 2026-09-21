@@ -3,9 +3,24 @@
 -- UI is loaded from Hub.lua. All features remain in this file.
 -- ==========================================================
 
-local Library = loadstring(game:HttpGet(
+local HUB_URL =
     "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/refs/heads/main/Hub.lua"
-))()
+
+local okHttp, hubSource = pcall(function()
+    return game:HttpGet(HUB_URL .. "?cb=" .. tostring(os.time()))
+end)
+
+if not okHttp or type(hubSource) ~= "string" then
+    error("DS HUB v1.0: não foi possível baixar o Hub.lua: " .. tostring(hubSource))
+end
+
+local okLoad, Library = pcall(function()
+    return loadstring(hubSource)()
+end)
+
+if not okLoad or type(Library) ~= "table" or type(Library.Init) ~= "function" then
+    error("DS HUB v1.0: Hub.lua carregou, mas não retornou uma biblioteca válida.")
+end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,15 +39,29 @@ end
 
 local env = getgenv and getgenv() or _G
 
-if env.DSHubMainRunning and env.DSHubMainLibrary and not env.DSHubMainLibrary.Unloaded then
-    return env.DSHubMainLibrary
+-- Sempre limpa uma execução anterior antes de iniciar outra.
+-- Não existe mais uma trava global que possa impedir a execução após erro.
+if env.DSHubMainLibrary and type(env.DSHubMainLibrary.Unload) == "function" then
+    pcall(function()
+        env.DSHubMainLibrary:Unload()
+    end)
 end
 
-local Window = Library.Init({
-    Name = "DS Hub",
-    Version = "v1.0",
-    ConfigFile = "DSHub_v1_0_Config.json",
-})
+env.DSHubMainRunning = nil
+env.DSHubMainLibrary = nil
+env.AutoLoot = nil
+
+local okInit, Window = pcall(function()
+    return Library.Init({
+        Name = "DS Hub",
+        Version = "v1.0",
+        ConfigFile = "DSHub_v1_0_Config.json",
+    })
+end)
+
+if not okInit or type(Window) ~= "table" or type(Window.CreateTab) ~= "function" then
+    error("DS HUB v1.0: Library.Init falhou ou não retornou Window: " .. tostring(Window))
+end
 
 -- Abas são criadas imediatamente, antes de qualquer módulo do jogo ser carregado.
 -- Isso evita a janela vazia caso um WaitForChild/require demore.
@@ -10909,4 +10938,6 @@ if env.RunawaysScriptLoading == coroutine.running() then
     env.RunawaysScriptLoadingToken = nil
 end
 
+env.DSHubMainRunning = true
+env.DSHubMainLibrary = library
 return library
