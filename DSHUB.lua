@@ -133,105 +133,11 @@ do
     end
 end
 
-do
-    local existingHolder = library.ScreenGui and library.ScreenGui:FindFirstChild("DSHubToastHolder")
-    local toastHolder = existingHolder or Instance.new("Frame")
-
-    if not existingHolder then
-        toastHolder.Name = "DSHubToastHolder"
-        toastHolder.BackgroundTransparency = 1
-        toastHolder.AnchorPoint = Vector2.new(1, 0)
-        toastHolder.Position = UDim2.new(1, -12, 0, 10)
-        toastHolder.Size = UDim2.new(0, 315, 1, -20)
-        toastHolder.ZIndex = 5000
-        toastHolder.Parent = library.ScreenGui
-
-        local toastLayout = Instance.new("UIListLayout")
-        toastLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-        toastLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-        toastLayout.Padding = UDim.new(0, 7)
-        toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        toastLayout.Parent = toastHolder
-    end
-
+if type(library.Notify) ~= "function" then
     function library:Notify(info)
         info = info or {}
-
-        local title = tostring(info.Title or "DS HUB")
-        local description = tostring(info.Description or info.Text or "")
-        local duration = math.max(1, tonumber(info.Time) or 4)
-
-        local card = Instance.new("Frame")
-        card.Name = "Toast"
-        card.Size = UDim2.new(1, 0, 0, 64)
-        card.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
-        card.BackgroundTransparency = 0.03
-        card.BorderSizePixel = 0
-        card.ZIndex = 5001
-        card.Parent = toastHolder
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 10)
-        corner.Parent = card
-
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(0, 255, 100)
-        stroke.Thickness = 0.9
-        stroke.Transparency = 0.1
-        stroke.Parent = card
-
-        local accent = Instance.new("Frame")
-        accent.Size = UDim2.new(0, 3, 1, -12)
-        accent.Position = UDim2.new(0, 6, 0, 6)
-        accent.BackgroundColor3 = Color3.fromRGB(0, 255, 100)
-        accent.BorderSizePixel = 0
-        accent.ZIndex = 5002
-        accent.Parent = card
-        local ac = Instance.new("UICorner")
-        ac.CornerRadius = UDim.new(0, 2)
-        ac.Parent = accent
-
-        local titleLabel = Instance.new("TextLabel")
-        titleLabel.BackgroundTransparency = 1
-        titleLabel.Position = UDim2.new(0, 18, 0, 7)
-        titleLabel.Size = UDim2.new(1, -26, 0, 18)
-        titleLabel.Text = title
-        titleLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-        titleLabel.Font = Enum.Font.GothamBold
-        titleLabel.TextSize = 10
-        titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-        titleLabel.ZIndex = 5002
-        titleLabel.Parent = card
-
-        local body = Instance.new("TextLabel")
-        body.BackgroundTransparency = 1
-        body.Position = UDim2.new(0, 18, 0, 27)
-        body.Size = UDim2.new(1, -26, 0, 29)
-        body.Text = description
-        body.TextColor3 = Color3.fromRGB(235, 235, 235)
-        body.Font = Enum.Font.Gotham
-        body.TextSize = 9
-        body.TextWrapped = true
-        body.TextXAlignment = Enum.TextXAlignment.Left
-        body.TextYAlignment = Enum.TextYAlignment.Top
-        body.ZIndex = 5002
-        body.Parent = card
-
-        task.delay(duration, function()
-            if not card.Parent then return end
-            card:TweenSize(
-                UDim2.new(1, 0, 0, 0),
-                Enum.EasingDirection.In,
-                Enum.EasingStyle.Quad,
-                0.18,
-                true,
-                function()
-                    if card.Parent then
-                        card:Destroy()
-                    end
-                end
-            )
-        end)
+        local text = tostring(info.Description or info.Text or "")
+        warn("[DS HUB] " .. text)
     end
 end
 
@@ -385,12 +291,10 @@ local function buildGroup(tab, sideName, title)
     end
 
     local header = Instance.new("Frame")
-    header.Size = UDim2.new(1, 0, 0, 40)
+    header.Size = UDim2.new(1, 0, 0, 30)
     header.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     header.BorderSizePixel = 0
-    header.AutomaticSize = Enum.AutomaticSize.None
-    header.ClipsDescendants = false
-    header.ZIndex = 10
+    header.AutomaticSize = Enum.AutomaticSize.Y
     header.Parent = side
 
     local corner = Instance.new("UICorner")
@@ -419,24 +323,11 @@ local function buildGroup(tab, sideName, title)
 
     local layout = Instance.new("UIListLayout")
     layout.Padding = UDim.new(0, 5)
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
     layout.Parent = content
 
     local padding = Instance.new("UIPadding")
     padding.PaddingBottom = UDim.new(0, 8)
     padding.Parent = content
-
-    local function resizeGroup()
-        header.Size = UDim2.new(
-            1,
-            0,
-            0,
-            math.max(40, 30 + layout.AbsoluteContentSize.Y + 8)
-        )
-    end
-
-    layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(resizeGroup)
-    task.defer(resizeGroup)
 
     local group = {
         _Frame = header,
@@ -452,28 +343,14 @@ local function buildGroup(tab, sideName, title)
             Color3.fromRGB(150, 160, 150)
         )
         label.TextWrapped = true
-        label.AutomaticSize = Enum.AutomaticSize.Y
-        label.ZIndex = 20
 
         local object = {}
-        object.Label = label
-
-        function object:SetText(value)
-            label.Text = tostring(value or "")
-        end
-
-        function object:GetText()
-            return label.Text
-        end
-
         function object:AddKeyPicker()
             return object
         end
-
         function object:AddColorPicker()
             return object
         end
-
         return object
     end
 
@@ -781,22 +658,6 @@ local function buildGroup(tab, sideName, title)
         layout.Padding = UDim.new(0, 3)
         layout.Parent = scroll
 
-        local function setPopupOpen(open)
-            popup.Visible = open
-            card.ZIndex = open and 250 or 40
-            button.ZIndex = open and 251 or 41
-            popup.ZIndex = open and 252 or 200
-            scroll.ZIndex = open and 253 or 201
-
-            if open then
-                for _, child in ipairs(scroll:GetChildren()) do
-                    if child:IsA("TextButton") then
-                        child.ZIndex = 254
-                    end
-                end
-            end
-        end
-
         local function displayValue()
             if option.Multi then
                 local count = 0
@@ -822,7 +683,7 @@ local function buildGroup(tab, sideName, title)
             for _, value in ipairs(option.Values or {}) do
                 local item = Instance.new("TextButton")
                 item.Size = UDim2.new(1, 0, 0, 24)
-                item.ZIndex = 254
+                item.ZIndex = 202
                 item.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
                 item.BorderSizePixel = 0
                 item.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -867,6 +728,23 @@ local function buildGroup(tab, sideName, title)
                 layout.AbsoluteContentSize.Y + 6
             )
         end)
+
+        local function setPopupOpen(open)
+            popup.Visible = open
+            card.ZIndex = open and 250 or 40
+            button.ZIndex = open and 251 or 41
+            popup.ZIndex = open and 252 or 200
+            scroll.ZIndex = open and 253 or 201
+
+            if open then
+                for _, child in ipairs(scroll:GetChildren()) do
+                    if child:IsA("TextButton") then
+                        child.ZIndex = 254
+                    end
+                end
+            end
+        end
+
         button.MouseButton1Click:Connect(function()
             setPopupOpen(not popup.Visible)
         end)
@@ -4219,7 +4097,6 @@ local function getSilentAimTarget(arguments)
                 and distance
                 and distance <= radius
                 and (part.Position - origin).Magnitude <= range
-                and (part.Position - origin).Magnitude <= options.RunawaysSilentAimMaxDistance.Value
                 and (not bestDistance or distance < bestDistance)
                 and isAimTargetVisible(model, part, origin, arguments.config)
             then
@@ -9305,7 +9182,7 @@ teleports.EntityBox:AddButton("Teleport to Player", function()
 end)
 
 npcBox:AddButton("Kill NPCs Once", function()
-    local count = killAllNPCs(options.RunawaysRageNPCRadius.Value)
+    local count = killAllNPCs()
 
     notify(string.format("Attacked NPCs: %d.", count), 4)
 end)
@@ -9361,7 +9238,7 @@ sellBox:AddButton("Break Nearby Cash Sources", function()
     notify(string.format("Break requests: %d.", count), 4)
 end)
 
-tabs.Main:AddLeftGroupbox("Navigation", "layout-dashboard"):AddLabel(
+tabs.Main:AddLeftGroupbox("Quick Start", "layout-dashboard"):AddLabel(
     "Use Loot para Bring e itens; Player para movimento; Teleports para locais; Weapon/ESP para combate; Auto Farm para automação."
 )
 
@@ -9408,11 +9285,18 @@ local function makeFullWidth(tab)
     function tab:RefreshSides()
         defaultRefresh(self)
 
-        local left = self.Sides[1]
-        local right = self.Sides[2]
+        local sides = self.Sides
+        if not sides or not sides[1] or not sides[2] then
+            return
+        end
 
-        left.Size = UDim2.new(1, -3, left.Size.Y.Scale, left.Size.Y.Offset)
+        local left = sides[1]
+        local right = sides[2]
+
+        left.Position = UDim2.new(0, 0, 0, 0)
+        left.Size = UDim2.new(1, -3, 0, left.AbsoluteSize.Y)
         right.Visible = false
+        self:RefreshSides()
     end
 
     tab:RefreshSides()
@@ -9454,15 +9338,6 @@ lootBox:AddDropdown("LootItems", {
 
 bringItems.Box:AddLabel("Escolha os itens ou categorias que o Bring deve transportar.")
 bringItems.Box:AddDivider()
-
-bringItems.Box:AddSlider("RunawaysBringMaxDistance", {
-    Text = "Bring Effect Distance",
-    Default = 200,
-    Min = 10,
-    Max = 2000,
-    Rounding = 0,
-    Suffix = " studs",
-})
 
 bringItems.Box:AddDropdown("RunawaysBringItems", {
     Values = bringItems.Names,
@@ -9723,14 +9598,6 @@ function bringItems:Start(all)
                     continue
                 end
 
-                local bringPart = item.PrimaryPart
-                local bringDistance = bringPart and (bringPart.Position - root.Position).Magnitude
-                local maxBringDistance = options.RunawaysBringMaxDistance and options.RunawaysBringMaxDistance.Value or math.huge
-
-                if not bringDistance or bringDistance > maxBringDistance then
-                    continue
-                end
-
                 attempted += 1
 
                 local part = item.PrimaryPart
@@ -9916,7 +9783,7 @@ function bringItems:IsCashSource(source)
         and source:FindFirstChild("CashFx", true) ~= nil
 end
 
-function bringItems:GetCashDrops(sortDrops, maxDistance)
+function bringItems:GetCashDrops(sortDrops)
     local drops = {}
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -9926,19 +9793,7 @@ function bringItems:GetCashDrops(sortDrops, maxDistance)
         local holder = cash.Parent
         local sensor = holder and holder:FindFirstChild("TouchSensor", true)
 
-        local inRange = true
-        if maxDistance and sensor and root then
-            inRange = (sensor.Position - origin).Magnitude <= maxDistance
-        end
-
-        if cash:IsDescendantOf(workspace)
-            and holder
-            and holder:IsA("Model")
-            and not holder:HasTag("ForbiddenLoot")
-            and sensor
-            and sensor:IsA("BasePart")
-            and inRange
-        then
+        if cash:IsDescendantOf(workspace) and holder and holder:IsA("Model") and not holder:HasTag("ForbiddenLoot") and sensor and sensor:IsA("BasePart") then
             drops[#drops + 1] = cash
         end
     end
@@ -10136,17 +9991,7 @@ function bringItems:StartCashRun(breakSources)
                             end
                         end
 
-                        local sourcePart = source.PrimaryPart or source:FindFirstChildWhichIsA("BasePart", true)
-                        local sourceDistance = sourcePart and (sourcePart.Position - root.Position).Magnitude
-                        local maxCashRunDistance = options.RunawaysCashRunMaxDistance and options.RunawaysCashRunMaxDistance.Value or math.huge
-
-                        if enabled
-                            and health
-                            and health:IsA("NumberValue")
-                            and health.Value > 0
-                            and sourceDistance
-                            and sourceDistance <= maxCashRunDistance
-                        then
+                        if enabled and health and health:IsA("NumberValue") and health.Value > 0 then
                             sources[#sources + 1] = source
                         end
                     end
@@ -10209,7 +10054,7 @@ function bringItems:StartCashRun(breakSources)
 
                 local found = false
 
-                for _, cash in self:GetCashDrops(true, options.RunawaysCashRunMaxDistance.Value) do
+                for _, cash in self:GetCashDrops() do
                     if not seen[cash] and (tries[cash] or 0) < 2 then
                         if not tries[cash] then
                             attempted += 1
@@ -10301,7 +10146,7 @@ function bringItems:SetCashAura(value)
                     local sensor = holder and holder:FindFirstChild("TouchSensor", true)
                     local last = attempts[cash]
 
-                    if flow.Cash and type(flow.Cash.Collect) == "function" and sensor and (sensor.Position - root.Position).Magnitude <= (options.RunawaysCashAuraRadius and options.RunawaysCashAuraRadius.Value or 7) and (not last or os.clock() - last >= 0.75) then
+                    if flow.Cash and type(flow.Cash.Collect) == "function" and sensor and (sensor.Position - root.Position).Magnitude <= 7 and (not last or os.clock() - last >= 0.75) then
                         attempts[cash] = os.clock()
                         pcall(flow.Cash.Collect, cash)
                     end
@@ -10337,7 +10182,7 @@ local function lootNearby()
 
     local items = getLoot()
     local nearest
-    local nearestDistance = options.RunawaysLootAuraRadius and options.RunawaysLootAuraRadius.Value or 8
+    local nearestDistance = 8
 
     for _, item in items do
         local part = item.PrimaryPart
@@ -10412,14 +10257,6 @@ local function collect(filter)
                 end
 
                 if not filter(item.Name) or not isLoot(item) then
-                    continue
-                end
-
-                local itemPart = item.PrimaryPart
-                local itemDistance = itemPart and (itemPart.Position - root.Position).Magnitude
-                local maxLootDistance = options.RunawaysLootMaxDistance and options.RunawaysLootMaxDistance.Value or math.huge
-
-                if not itemDistance or itemDistance > maxLootDistance then
                     continue
                 end
 
@@ -10836,15 +10673,6 @@ local function sellAllLoot()
     end)
 end
 
-lootBox:AddSlider("RunawaysLootMaxDistance", {
-    Text = "Loot Effect Distance",
-    Default = 200,
-    Min = 10,
-    Max = 2000,
-    Rounding = 0,
-    Suffix = " studs",
-})
-
 lootBox:AddButton({
     Text = "Loot Selected",
     Func = function()
@@ -10868,15 +10696,6 @@ lootBox:AddButton({
             return true
         end)
     end,
-})
-
-lootBox:AddSlider("RunawaysLootAuraRadius", {
-    Text = "Loot Aura Distance",
-    Default = 25,
-    Min = 5,
-    Max = 500,
-    Rounding = 0,
-    Suffix = " studs",
 })
 
 lootBox:AddToggle("LootAura", {
@@ -10928,15 +10747,6 @@ sellBox:AddDropdown("RunawaysCashSources", {
     FormatListValue = formatName,
 })
 
-sellBox:AddSlider("RunawaysCashRunMaxDistance", {
-    Text = "Cash Run Effect Distance",
-    Default = 200,
-    Min = 10,
-    Max = 2000,
-    Rounding = 0,
-    Suffix = " studs",
-})
-
 sellBox:AddButton({
     Text = "Cash Run",
     Func = function()
@@ -10956,15 +10766,6 @@ sellBox:AddButton({
     Func = function()
         bringItems:StopCash()
     end,
-})
-
-sellBox:AddSlider("RunawaysCashAuraRadius", {
-    Text = "Cash Aura Distance",
-    Default = 25,
-    Min = 5,
-    Max = 500,
-    Rounding = 0,
-    Suffix = " studs",
 })
 
 sellBox:AddToggle("RunawaysCashAura", {
@@ -11296,15 +11097,6 @@ silentAimBox:AddToggle("RunawaysSilentAimShowFOV", {
     Default = Color3.fromRGB(255, 255, 255),
     Title = "FOV Color",
     Transparency = 0,
-})
-
-silentAimBox:AddSlider("RunawaysSilentAimMaxDistance", {
-    Text = "Maximum Target Distance",
-    Default = 300,
-    Min = 25,
-    Max = 2000,
-    Rounding = 0,
-    Suffix = " studs",
 })
 
 silentAimBox:AddSlider("RunawaysSilentAimFOVRadius", {
