@@ -112,7 +112,7 @@ function DSHubLibrary.Init(options)
 
     local MainContainer = Instance.new("Frame", ScreenGui)
     MainContainer.Name = "MainContainer"
-    MainContainer.Size = UDim2.new(0, 480, 0, 300)
+    MainContainer.Size = UDim2.new(0, 560, 0, 350)
     MainContainer.AnchorPoint = Vector2.new(0.5, 0.5)
     MainContainer.Position = savedData.NormalScaleX and UDim2.new(savedData.NormalScaleX, savedData.NormalPosX, savedData.NormalScaleY, savedData.NormalPosY) or UDim2.new(0.5, 0, 0.5, 0)
     MainContainer.BackgroundTransparency = 1
@@ -256,7 +256,7 @@ function DSHubLibrary.Init(options)
     end)
 
     local isMinimized = false
-    local normalSize = UDim2.new(0, 480, 0, 300)
+    local normalSize = UDim2.new(0, 560, 0, 350)
     local compactSize = UDim2.new(0, 190, 0, 38)
 
     local currentNormalPos = UDim2.new(savedData.NormalScaleX or 0.5, savedData.NormalPosX or 0, savedData.NormalScaleY or 0.5, savedData.NormalPosY or 0)
