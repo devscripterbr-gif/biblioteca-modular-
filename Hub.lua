@@ -451,6 +451,9 @@ function DSHubLibrary.Init(options)
         Page.ScrollBarThickness = 2
         Page.ScrollBarImageColor3 = THEME.Accent
         Page.BorderSizePixel = 0
+        Page.ClipsDescendants = true
+        Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        Page.CanvasSize = UDim2.new(0, 0, 0, 0)
 
         local PageLayout = Instance.new("UIListLayout", Page)
         PageLayout.Padding = UDim.new(0, 6)
@@ -539,156 +542,785 @@ function DSHubLibrary.Init(options)
         MainContainer.Visible = true
     end)
 
-    -- DS HUB v1.0 public runtime.
-    -- Init() returns this Window object directly.
-    local runtime=Window
-    runtime.Library=DSHubLibrary
-    runtime.ScreenGui=ScreenGui
-    runtime.Options={}
-    runtime.Toggles={}
-    runtime.IsMobile=UserInputService.TouchEnabled
-    runtime.Unloaded=false
-    runtime._unloadCallbacks={}
+    -- DS HUB v1.0 public runtime / compatibility layer.
+    -- The library owns the window/tabs; feature controls are built here.
+    local runtime = Window
+    runtime.Library = DSHubLibrary
+    runtime.ScreenGui = ScreenGui
+    runtime.Options = {}
+    runtime.Toggles = {}
+    runtime.IsMobile = UserInputService.TouchEnabled
+    runtime.Unloaded = false
+    runtime._unloadCallbacks = {}
 
-    local notifyHolder=Instance.new("Frame",ScreenGui)
-    notifyHolder.BackgroundTransparency=1; notifyHolder.AnchorPoint=Vector2.new(1,0)
-    notifyHolder.Position=UDim2.new(1,-12,0,12); notifyHolder.Size=UDim2.new(0,300,1,-24); notifyHolder.ZIndex=900
-    local nl=Instance.new("UIListLayout",notifyHolder); nl.HorizontalAlignment=Enum.HorizontalAlignment.Right; nl.VerticalAlignment=Enum.VerticalAlignment.Top; nl.Padding=UDim.new(0,6)
+    -- ------------------------------------------------------------
+    -- Notifications: compact DS HUB toast, no giant black rectangle.
+    -- ------------------------------------------------------------
+    local notifyHolder = Instance.new("Frame", ScreenGui)
+    notifyHolder.Name = "DSHubNotifications"
+    notifyHolder.BackgroundTransparency = 1
+    notifyHolder.AnchorPoint = Vector2.new(1, 0)
+    notifyHolder.Position = UDim2.new(1, -14, 0, 48)
+    notifyHolder.Size = UDim2.new(0, 300, 1, -62)
+    notifyHolder.ZIndex = 2000
 
-    function runtime:Notify(i)
-        i=i or {}; local c=Instance.new("Frame",notifyHolder); c.Size=UDim2.new(1,0,0,58); c.BackgroundColor3=THEME.Card; c.BorderSizePixel=0; c.ZIndex=901; addCorner(c,9)
-        local s=Instance.new("UIStroke",c); s.Color=THEME.Accent; s.Thickness=.8
-        createLabel(c,UDim2.new(1,-16,0,17),UDim2.new(0,8,0,6),tostring(i.Title or "DS HUB"),THEME.Accent,Enum.Font.GothamBold,10,Enum.TextXAlignment.Left)
-        local d=createLabel(c,UDim2.new(1,-16,0,28),UDim2.new(0,8,0,24),tostring(i.Description or ""),THEME.Text,Enum.Font.Gotham,9,Enum.TextXAlignment.Left); d.TextWrapped=true
-        task.delay(tonumber(i.Time) or 4,function() if c.Parent then c:Destroy() end end)
-    end
+    local notifyLayout = Instance.new("UIListLayout", notifyHolder)
+    notifyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    notifyLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    notifyLayout.Padding = UDim.new(0, 7)
 
-    local function clone(v) if type(v)~='table' then return v end local t={} for k,x in pairs(v) do t[k]=x end return t end
-    local function reg(id,default,kind,cb,meta)
-        local o={Default=clone(default),Value=clone(default),Kind=kind,Callback=cb,Meta=meta or {}}
-        function o:SetValue(v) self.Value=clone(v); if self._update then pcall(self._update,self.Value) end; if self.Callback then pcall(self.Callback,self.Value) end end
-        function o:SetValues(v) self.Values=v or {}; if self._refresh then pcall(self._refresh) end end
-        runtime.Options[id]=o; if kind=='toggle' then runtime.Toggles[id]=o end
-        return o
-    end
+    function runtime:Notify(info)
+        info = info or {}
 
-    local function box(parent,title)
-        local f=Instance.new('Frame',parent); f.Size=UDim2.new(1,-4,0,40); f.AutomaticSize=Enum.AutomaticSize.Y; f.BackgroundColor3=THEME.Card; f.BorderSizePixel=0; addCorner(f,9)
-        local st=Instance.new('UIStroke',f); st.Color=THEME.CardBorder; st.Thickness=.8
-        createLabel(f,UDim2.new(1,-16,0,18),UDim2.new(0,8,0,5),tostring(title or 'Section'),THEME.Accent,Enum.Font.GothamBold,10,Enum.TextXAlignment.Left)
-        local c=Instance.new('Frame',f); c.Position=UDim2.new(0,8,0,26); c.Size=UDim2.new(1,-16,0,10); c.AutomaticSize=Enum.AutomaticSize.Y; c.BackgroundTransparency=1
-        local l=Instance.new('UIListLayout',c); l.Padding=UDim.new(0,5)
-        local p=Instance.new('UIPadding',c); p.PaddingBottom=UDim.new(0,8)
-        return f,c
-    end
+        local toast = Instance.new("Frame", notifyHolder)
+        toast.Size = UDim2.new(1, 0, 0, 64)
+        toast.BackgroundColor3 = Color3.fromRGB(8, 8, 8)
+        toast.BackgroundTransparency = 0.03
+        toast.BorderSizePixel = 0
+        toast.ZIndex = 2001
+        addCorner(toast, 10)
 
-    local function controls(parent,title)
-        local _,c=box(parent,title); local api={Sides={{Size=UDim2.new(1,0,1,0)},{Visible=true}}}
-        function api:RefreshSides() end
-        function api:AddLabel(t)
-            local l=createLabel(c,UDim2.new(1,0,0,20),UDim2.new(),tostring(t or ''),THEME.SubText,Enum.Font.Gotham,9,Enum.TextXAlignment.Left); l.TextWrapped=true
-            return {AddKeyPicker=function(self)return self end,AddColorPicker=function(self)return self end}
-        end
-        function api:AddDivider() local d=Instance.new('Frame',c); d.Size=UDim2.new(1,0,0,1); d.BackgroundColor3=THEME.Separator; d.BorderSizePixel=0; return d end
-        function api:AddButton(t,cb)
-            local text=type(t)=='table' and (t.Text or t.Name) or t; local b=Instance.new('TextButton',c); b.Size=UDim2.new(1,0,0,29); b.BackgroundColor3=THEME.ToggleOff; b.BorderSizePixel=0; b.Text=tostring(text or 'Button'); b.TextColor3=THEME.Text; b.Font=Enum.Font.GothamMedium; b.TextSize=9; addCorner(b,7); b.MouseButton1Click:Connect(function() if cb then task.spawn(cb) end end); return b
-        end
-        function api:AddToggle(id,info)
-            info=info or {}; local o=reg(id,info.Default==true,'toggle',info.Callback,info); local row=Instance.new('Frame',c); row.Size=UDim2.new(1,0,0,32); row.BackgroundTransparency=1
-            createLabel(row,UDim2.new(1,-48,1,0),UDim2.new(),tostring(info.Text or id),THEME.Text,Enum.Font.GothamMedium,9,Enum.TextXAlignment.Left)
-            local sw=Instance.new('Frame',row); sw.Size=UDim2.new(0,34,0,18); sw.Position=UDim2.new(1,-34,.5,-9); sw.BackgroundColor3=o.Value and THEME.Accent or THEME.ToggleOff; sw.BorderSizePixel=0; addCorner(sw,9)
-            local ci=Instance.new('Frame',sw); ci.Size=UDim2.new(0,14,0,14); ci.Position=o.Value and UDim2.new(1,-16,.5,-7) or UDim2.new(0,2,.5,-7); ci.BackgroundColor3=Color3.new(1,1,1); ci.BorderSizePixel=0; addCorner(ci,7)
-            local bt=Instance.new('TextButton',row); bt.Size=UDim2.new(1,0,1,0); bt.BackgroundTransparency=1; bt.Text=''
-            o._update=function(v) sw.BackgroundColor3=v and THEME.Accent or THEME.ToggleOff; ci.Position=v and UDim2.new(1,-16,.5,-7) or UDim2.new(0,2,.5,-7) end
-            bt.MouseButton1Click:Connect(function() o:SetValue(not o.Value) end)
-            function o:AddColorPicker(id2,info2) info2=info2 or {}; reg(id2,info2.Default or Color3.new(1,1,1),'color',nil,info2); return o end
-            function o:AddKeyPicker() return o end
-            if o.Value and o.Callback then task.spawn(o.Callback,o.Value) end
-            return o
-        end
-        function api:AddSlider(id,info)
-            info=info or {}; local mn=tonumber(info.Min) or 0; local mx=tonumber(info.Max) or 100; local def=tonumber(info.Default) or mn; local o=reg(id,def,'slider',info.Callback,info)
-            local row=Instance.new('Frame',c); row.Size=UDim2.new(1,0,0,37); row.BackgroundTransparency=1; createLabel(row,UDim2.new(.68,0,0,15),UDim2.new(),tostring(info.Text or id),THEME.Text,Enum.Font.GothamMedium,9,Enum.TextXAlignment.Left)
-            local vl=createLabel(row,UDim2.new(.32,0,0,15),UDim2.new(.68,0,0,0),tostring(def)..tostring(info.Suffix or ''),THEME.Accent,Enum.Font.GothamBold,9,Enum.TextXAlignment.Right)
-            local bar=Instance.new('Frame',row); bar.Position=UDim2.new(0,0,0,22); bar.Size=UDim2.new(1,0,0,8); bar.BackgroundColor3=THEME.ToggleOff; bar.BorderSizePixel=0; addCorner(bar,4)
-            local fill=Instance.new('Frame',bar); fill.BackgroundColor3=THEME.Accent; fill.BorderSizePixel=0; addCorner(fill,4)
-            local drag=false
-            local function setx(x) local a=math.clamp((x-bar.AbsolutePosition.X)/math.max(bar.AbsoluteSize.X,1),0,1); local v=mn+(mx-mn)*a; local r=tonumber(info.Rounding); if r then local f=10^r; v=math.floor(v*f+.5)/f end; o:SetValue(v) end
-            bar.InputBegan:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=true; setx(i.Position.X) end end)
-            UserInputService.InputChanged:Connect(function(i) if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then setx(i.Position.X) end end)
-            UserInputService.InputEnded:Connect(function(i) if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end end)
-            o._update=function(v) fill.Size=UDim2.new(math.clamp((tonumber(v)-mn)/math.max(mx-mn,1),0,1),0,1,0); vl.Text=tostring(v)..tostring(info.Suffix or '') end; o._update(def)
-            return o
-        end
-        function api:AddDropdown(id,info)
-            info=info or {}; local vals=info.Values or {}; local multi=info.Multi==true; local def=info.Default
-            local dv=multi and (type(def)=='table' and clone(def) or {}) or (type(def)=='number' and (vals[def] or vals[1] or 'None') or def or vals[1] or 'None')
-            local o=reg(id,dv,'dropdown',info.Callback,info); o.Values=vals
-            local row=Instance.new('Frame',c); row.Size=UDim2.new(1,0,0,34); row.BackgroundTransparency=1; createLabel(row,UDim2.new(.38,0,1,0),UDim2.new(),tostring(info.Text or id),THEME.Text,Enum.Font.GothamMedium,9,Enum.TextXAlignment.Left)
-            local b=Instance.new('TextButton',row); b.Position=UDim2.new(.38,0,.5,-13); b.Size=UDim2.new(.62,0,0,26); b.BackgroundColor3=THEME.ToggleOff; b.BorderSizePixel=0; b.TextColor3=THEME.Text; b.Font=Enum.Font.Gotham; b.TextSize=8; addCorner(b,7)
-            local pop=Instance.new('Frame',row); pop.Visible=false; pop.Position=UDim2.new(.38,0,1,0); pop.Size=UDim2.new(.62,0,0,130); pop.BackgroundColor3=THEME.Background; pop.BorderSizePixel=0; pop.ZIndex=50; addCorner(pop,8); local ps=Instance.new('UIStroke',pop); ps.Color=THEME.Accent; ps.Thickness=.8
-            local sc=Instance.new('ScrollingFrame',pop); sc.Size=UDim2.new(1,-6,1,-6); sc.Position=UDim2.new(0,3,0,3); sc.BackgroundTransparency=1; sc.BorderSizePixel=0; sc.ScrollBarThickness=2; sc.ScrollBarImageColor3=THEME.Accent
-            local ll=Instance.new('UIListLayout',sc); ll.Padding=UDim.new(0,3)
-            local function disp(v) if multi then local n=0; for _ in pairs(v or {}) do n+=1 end; return n==0 and 'None' or (tostring(n)..' selected') end; return tostring(v or 'None') end
-            local function rebuild()
-                for _,ch in ipairs(sc:GetChildren()) do if not ch:IsA('UIListLayout') then ch:Destroy() end end
-                for _,v in ipairs(o.Values or {}) do local it=Instance.new('TextButton',sc); it.Size=UDim2.new(1,0,0,24); it.BackgroundColor3=THEME.Card; it.BorderSizePixel=0; it.TextColor3=THEME.Text; it.Font=Enum.Font.Gotham; it.TextSize=8; it.Text=tostring(v); addCorner(it,5); it.MouseButton1Click:Connect(function() if multi then local t=clone(o.Value or {}); if t[v] then t[v]=nil else t[v]=true end; o:SetValue(t) else o:SetValue(v); pop.Visible=false end end) end
-                b.Text=disp(o.Value)
+        local stroke = Instance.new("UIStroke", toast)
+        stroke.Color = THEME.Accent
+        stroke.Thickness = 1
+
+        local title = createLabel(
+            toast,
+            UDim2.new(1, -20, 0, 17),
+            UDim2.new(0, 10, 0, 7),
+            tostring(info.Title or "DS HUB"),
+            THEME.Accent,
+            Enum.Font.GothamBold,
+            10,
+            Enum.TextXAlignment.Left
+        )
+        title.ZIndex = 2002
+
+        local description = createLabel(
+            toast,
+            UDim2.new(1, -20, 0, 32),
+            UDim2.new(0, 10, 0, 27),
+            tostring(info.Description or ""),
+            THEME.Text,
+            Enum.Font.Gotham,
+            9,
+            Enum.TextXAlignment.Left
+        )
+        description.TextWrapped = true
+        description.ZIndex = 2002
+
+        task.delay(tonumber(info.Time) or 4, function()
+            if toast.Parent then
+                createTween(
+                    toast,
+                    0.18,
+                    {BackgroundTransparency = 1}
+                ):Play()
+
+                task.wait(0.18)
+
+                if toast.Parent then
+                    toast:Destroy()
+                end
             end
-            function o:SetValues(v) self.Values=v or {}; rebuild() end
-            function o:SetValue(v) self.Value=clone(v); b.Text=disp(self.Value); if self.Callback then pcall(self.Callback,self.Value) end end
-            b.MouseButton1Click:Connect(function() pop.Visible=not pop.Visible end); rebuild(); return o
+        end)
+
+        return toast
+    end
+
+    -- ------------------------------------------------------------
+    -- Option registry.
+    -- ------------------------------------------------------------
+    local function clone(value)
+        if type(value) ~= "table" then
+            return value
         end
-        function api:AddInput(id,info)
-            info=info or {}; local o=reg(id,tostring(info.Default or ''),'input',info.Callback,info); local row=Instance.new('Frame',c); row.Size=UDim2.new(1,0,0,50); row.BackgroundTransparency=1; createLabel(row,UDim2.new(1,0,0,16),UDim2.new(),tostring(info.Text or id),THEME.Text,Enum.Font.GothamMedium,9,Enum.TextXAlignment.Left)
-            local tb=Instance.new('TextBox',row); tb.Size=UDim2.new(1,0,0,28); tb.Position=UDim2.new(0,0,0,19); tb.BackgroundColor3=THEME.ToggleOff; tb.BorderSizePixel=0; tb.TextColor3=THEME.Text; tb.PlaceholderColor3=THEME.SubText; tb.Font=Enum.Font.Gotham; tb.TextSize=8; tb.Text=tostring(o.Value); tb.PlaceholderText=tostring(info.Placeholder or ''); addCorner(tb,7); tb.FocusLost:Connect(function() o:SetValue(tb.Text) end); return o
+
+        local result = {}
+
+        for key, item in pairs(value) do
+            result[key] = item
         end
-        function api:AddLeftGroupbox(t) return controls(c,t) end; function api:AddRightGroupbox(t) return controls(c,t) end
-        function api:AddLeftTabbox() local w={}; function w:AddTab(t) return controls(c,t) end; return w end
-        function api:AddRightTabbox() return self:AddLeftTabbox() end
+
+        return result
+    end
+
+    local function registerOption(id, defaultValue, kind, callback, metadata)
+        local option = {
+            Id = id,
+            Default = clone(defaultValue),
+            Value = clone(defaultValue),
+            Kind = kind,
+            Callback = callback,
+            Meta = metadata or {},
+        }
+
+        function option:SetValue(value)
+            self.Value = clone(value)
+
+            if self._update then
+                pcall(self._update, self.Value)
+            end
+
+            if self.Callback then
+                pcall(self.Callback, self.Value)
+            end
+        end
+
+        function option:SetValues(values)
+            self.Values = values or {}
+
+            if self._refreshValues then
+                pcall(self._refreshValues)
+            end
+        end
+
+        runtime.Options[id] = option
+
+        if kind == "toggle" then
+            runtime.Toggles[id] = option
+        end
+
+        return option
+    end
+
+    -- ------------------------------------------------------------
+    -- Stable group box.
+    -- Avoid AutomaticSize feedback loops that produced the huge
+    -- empty rectangles seen in the previous version.
+    -- ------------------------------------------------------------
+    local function createGroup(parent, title)
+        local group = Instance.new("Frame", parent)
+        group.Name = "DSHubGroup"
+        group.Size = UDim2.new(1, -4, 0, 46)
+        group.BackgroundColor3 = THEME.Card
+        group.BorderSizePixel = 0
+        group.ClipsDescendants = false
+        group.ZIndex = 10
+        addCorner(group, 10)
+
+        local stroke = Instance.new("UIStroke", group)
+        stroke.Color = THEME.CardBorder
+        stroke.Thickness = 0.8
+
+        local header = createLabel(
+            group,
+            UDim2.new(1, -18, 0, 20),
+            UDim2.new(0, 9, 0, 6),
+            tostring(title or "Section"),
+            THEME.Accent,
+            Enum.Font.GothamBold,
+            10,
+            Enum.TextXAlignment.Left
+        )
+        header.ZIndex = 11
+
+        local content = Instance.new("Frame", group)
+        content.Name = "Content"
+        content.Position = UDim2.new(0, 9, 0, 29)
+        content.Size = UDim2.new(1, -18, 0, 1)
+        content.BackgroundTransparency = 1
+        content.ClipsDescendants = false
+        content.ZIndex = 11
+
+        local layout = Instance.new("UIListLayout", content)
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, 5)
+
+        local padding = Instance.new("UIPadding", content)
+        padding.PaddingBottom = UDim.new(0, 9)
+
+        local function resize()
+            local contentHeight = layout.AbsoluteContentSize.Y + 9
+            content.Size = UDim2.new(1, -18, 0, math.max(contentHeight, 1))
+            group.Size = UDim2.new(1, -4, 0, 36 + contentHeight)
+        end
+
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(resize)
+        task.defer(resize)
+
+        return group, content
+    end
+
+    local function createControls(parent, title)
+        local _, content = createGroup(parent, title)
+
+        local api = {
+            _content = content,
+        }
+
+        function api:RefreshSides()
+            if self._refreshLayout then
+                pcall(self._refreshLayout)
+            end
+        end
+
+        function api:AddLabel(text)
+            local label = createLabel(
+                content,
+                UDim2.new(1, 0, 0, 20),
+                UDim2.new(),
+                tostring(text or ""),
+                THEME.SubText,
+                Enum.Font.Gotham,
+                9,
+                Enum.TextXAlignment.Left
+            )
+            label.TextWrapped = true
+
+            function label:SetText(value)
+                self.Text = tostring(value or "")
+            end
+
+            function label:AddKeyPicker()
+                return self
+            end
+
+            function label:AddColorPicker()
+                return self
+            end
+
+            return label
+        end
+
+        function api:AddDivider()
+            local divider = Instance.new("Frame", content)
+            divider.Size = UDim2.new(1, 0, 0, 1)
+            divider.BackgroundColor3 = THEME.Separator
+            divider.BorderSizePixel = 0
+            divider.ZIndex = 12
+            return divider
+        end
+
+        function api:AddButton(buttonInfo, callback)
+            local info = type(buttonInfo) == "table" and buttonInfo or nil
+            local text = info and (info.Text or info.Name) or buttonInfo
+            local action = callback
+                or (info and (info.Func or info.Callback or info.Action))
+
+            local button = Instance.new("TextButton", content)
+            button.Size = UDim2.new(1, 0, 0, 30)
+            button.BackgroundColor3 = THEME.ToggleOff
+            button.BorderSizePixel = 0
+            button.Text = tostring(text or "Button")
+            button.TextColor3 = THEME.Text
+            button.Font = Enum.Font.GothamMedium
+            button.TextSize = 9
+            button.AutoButtonColor = false
+            button.ZIndex = 12
+            addCorner(button, 8)
+
+            button.MouseEnter:Connect(function()
+                button.BackgroundColor3 = Color3.fromRGB(18, 30, 18)
+            end)
+
+            button.MouseLeave:Connect(function()
+                button.BackgroundColor3 = THEME.ToggleOff
+            end)
+
+            button.MouseButton1Click:Connect(function()
+                if type(action) == "function" then
+                    task.spawn(function()
+                        pcall(action)
+                    end)
+                end
+            end)
+
+            return button
+        end
+
+        function api:AddToggle(id, info)
+            info = info or {}
+
+            local option = registerOption(
+                id,
+                info.Default == true,
+                "toggle",
+                info.Callback,
+                info
+            )
+
+            local row = Instance.new("Frame", content)
+            row.Size = UDim2.new(1, 0, 0, 34)
+            row.BackgroundTransparency = 1
+            row.ZIndex = 12
+
+            local label = createLabel(
+                row,
+                UDim2.new(1, -54, 1, 0),
+                UDim2.new(),
+                tostring(info.Text or id),
+                THEME.Text,
+                Enum.Font.GothamMedium,
+                9,
+                Enum.TextXAlignment.Left
+            )
+            label.ZIndex = 13
+
+            local switch = Instance.new("Frame", row)
+            switch.Size = UDim2.new(0, 34, 0, 18)
+            switch.Position = UDim2.new(1, -34, 0.5, -9)
+            switch.BackgroundColor3 = option.Value and THEME.Accent or THEME.ToggleOff
+            switch.BorderSizePixel = 0
+            switch.ZIndex = 13
+            addCorner(switch, 9)
+
+            local circle = Instance.new("Frame", switch)
+            circle.Size = UDim2.new(0, 14, 0, 14)
+            circle.Position = option.Value
+                and UDim2.new(1, -16, 0.5, -7)
+                or UDim2.new(0, 2, 0.5, -7)
+            circle.BackgroundColor3 = Color3.new(1, 1, 1)
+            circle.BorderSizePixel = 0
+            circle.ZIndex = 14
+            addCorner(circle, 7)
+
+            local click = Instance.new("TextButton", row)
+            click.Size = UDim2.new(1, 0, 1, 0)
+            click.BackgroundTransparency = 1
+            click.Text = ""
+            click.ZIndex = 15
+
+            option._update = function(value)
+                switch.BackgroundColor3 = value
+                    and THEME.Accent
+                    or THEME.ToggleOff
+
+                circle.Position = value
+                    and UDim2.new(1, -16, 0.5, -7)
+                    or UDim2.new(0, 2, 0.5, -7)
+            end
+
+            click.MouseButton1Click:Connect(function()
+                option:SetValue(not option.Value)
+            end)
+
+            function option:AddColorPicker(colorId, colorInfo)
+                colorInfo = colorInfo or {}
+
+                local colorOption = registerOption(
+                    colorId,
+                    colorInfo.Default or Color3.fromRGB(0, 255, 100),
+                    "color",
+                    colorInfo.Callback,
+                    colorInfo
+                )
+
+                self.ColorPicker = colorOption
+                return self
+            end
+
+            function option:AddKeyPicker(keyId, keyInfo)
+                self.KeyPicker = {
+                    Id = keyId,
+                    Default = keyInfo and keyInfo.Default,
+                    Text = keyInfo and keyInfo.Text,
+                    SyncToggleState = keyInfo and keyInfo.SyncToggleState,
+                    Mode = keyInfo and keyInfo.Mode,
+                }
+
+                return self
+            end
+
+            if option.Value and option.Callback then
+                task.defer(option.Callback, option.Value)
+            end
+
+            return option
+        end
+
+        function api:AddSlider(id, info)
+            info = info or {}
+
+            local minimum = tonumber(info.Min) or 0
+            local maximum = tonumber(info.Max) or 100
+            local default = tonumber(info.Default) or minimum
+
+            local option = registerOption(
+                id,
+                default,
+                "slider",
+                info.Callback,
+                info
+            )
+
+            local row = Instance.new("Frame", content)
+            row.Size = UDim2.new(1, 0, 0, 42)
+            row.BackgroundTransparency = 1
+            row.ZIndex = 12
+
+            local nameLabel = createLabel(
+                row,
+                UDim2.new(0.68, 0, 0, 16),
+                UDim2.new(),
+                tostring(info.Text or id),
+                THEME.Text,
+                Enum.Font.GothamMedium,
+                9,
+                Enum.TextXAlignment.Left
+            )
+            nameLabel.ZIndex = 13
+
+            local valueLabel = createLabel(
+                row,
+                UDim2.new(0.32, 0, 0, 16),
+                UDim2.new(0.68, 0, 0, 0),
+                tostring(default) .. tostring(info.Suffix or ""),
+                THEME.Accent,
+                Enum.Font.GothamBold,
+                9,
+                Enum.TextXAlignment.Right
+            )
+            valueLabel.ZIndex = 13
+
+            local bar = Instance.new("Frame", row)
+            bar.Position = UDim2.new(0, 0, 0, 25)
+            bar.Size = UDim2.new(1, 0, 0, 8)
+            bar.BackgroundColor3 = THEME.ToggleOff
+            bar.BorderSizePixel = 0
+            bar.ZIndex = 13
+            addCorner(bar, 4)
+
+            local fill = Instance.new("Frame", bar)
+            fill.BackgroundColor3 = THEME.Accent
+            fill.BorderSizePixel = 0
+            fill.ZIndex = 14
+            addCorner(fill, 4)
+
+            local dragging = false
+
+            local function setFromX(x)
+                local alpha = math.clamp(
+                    (x - bar.AbsolutePosition.X)
+                    / math.max(bar.AbsoluteSize.X, 1),
+                    0,
+                    1
+                )
+
+                local value = minimum + (maximum - minimum) * alpha
+                local rounding = tonumber(info.Rounding)
+
+                if rounding then
+                    local factor = 10 ^ rounding
+                    value = math.floor(value * factor + 0.5) / factor
+                end
+
+                option:SetValue(value)
+            end
+
+            bar.InputBegan:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch
+                then
+                    dragging = true
+                    setFromX(input.Position.X)
+                end
+            end)
+
+            UserInputService.InputChanged:Connect(function(input)
+                if dragging
+                    and (
+                        input.UserInputType == Enum.UserInputType.MouseMovement
+                        or input.UserInputType == Enum.UserInputType.Touch
+                    )
+                then
+                    setFromX(input.Position.X)
+                end
+            end)
+
+            UserInputService.InputEnded:Connect(function(input)
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                    or input.UserInputType == Enum.UserInputType.Touch
+                then
+                    dragging = false
+                end
+            end)
+
+            option._update = function(value)
+                local alpha = math.clamp(
+                    (tonumber(value) - minimum)
+                    / math.max(maximum - minimum, 1),
+                    0,
+                    1
+                )
+
+                fill.Size = UDim2.new(alpha, 0, 1, 0)
+                valueLabel.Text = tostring(value) .. tostring(info.Suffix or "")
+            end
+
+            option._update(default)
+
+            return option
+        end
+
+        function api:AddDropdown(id, info)
+            info = info or {}
+
+            local values = info.Values or {}
+            local multi = info.Multi == true
+            local default = info.Default
+
+            local defaultValue
+
+            if multi then
+                defaultValue = type(default) == "table" and clone(default) or {}
+            elseif type(default) == "number" then
+                defaultValue = values[default] or values[1] or "None"
+            else
+                defaultValue = default or values[1] or "None"
+            end
+
+            local option = registerOption(
+                id,
+                defaultValue,
+                "dropdown",
+                info.Callback,
+                info
+            )
+
+            option.Values = values
+
+            local row = Instance.new("Frame", content)
+            row.Size = UDim2.new(1, 0, 0, 36)
+            row.BackgroundTransparency = 1
+            row.ZIndex = 12
+
+            local nameLabel = createLabel(
+                row,
+                UDim2.new(0.38, 0, 1, 0),
+                UDim2.new(),
+                tostring(info.Text or id),
+                THEME.Text,
+                Enum.Font.GothamMedium,
+                9,
+                Enum.TextXAlignment.Left
+            )
+            nameLabel.ZIndex = 13
+
+            local button = Instance.new("TextButton", row)
+            button.Position = UDim2.new(0.38, 0, 0.5, -13)
+            button.Size = UDim2.new(0.62, 0, 0, 26)
+            button.BackgroundColor3 = THEME.ToggleOff
+            button.BorderSizePixel = 0
+            button.TextColor3 = THEME.Text
+            button.Font = Enum.Font.Gotham
+            button.TextSize = 8
+            button.AutoButtonColor = false
+            button.ZIndex = 20
+            addCorner(button, 7)
+
+            local popup = Instance.new("Frame", row)
+            popup.Visible = false
+            popup.Position = UDim2.new(0.38, 0, 1, 2)
+            popup.Size = UDim2.new(0.62, 0, 0, 150)
+            popup.BackgroundColor3 = THEME.Background
+            popup.BorderSizePixel = 0
+            popup.ZIndex = 1000
+            popup.ClipsDescendants = true
+            addCorner(popup, 8)
+
+            local popupStroke = Instance.new("UIStroke", popup)
+            popupStroke.Color = THEME.Accent
+            popupStroke.Thickness = 1
+
+            local scroll = Instance.new("ScrollingFrame", popup)
+            scroll.Size = UDim2.new(1, -6, 1, -6)
+            scroll.Position = UDim2.new(0, 3, 0, 3)
+            scroll.BackgroundTransparency = 1
+            scroll.BorderSizePixel = 0
+            scroll.ScrollBarThickness = 2
+            scroll.ScrollBarImageColor3 = THEME.Accent
+            scroll.ZIndex = 1001
+
+            local list = Instance.new("UIListLayout", scroll)
+            list.Padding = UDim.new(0, 3)
+
+            local function displayValue(value)
+                if multi then
+                    local count = 0
+
+                    for _, selected in pairs(value or {}) do
+                        if selected then
+                            count += 1
+                        end
+                    end
+
+                    return count == 0 and "None" or (tostring(count) .. " selected")
+                end
+
+                return tostring(value or "None")
+            end
+
+            local function rebuild()
+                for _, child in ipairs(scroll:GetChildren()) do
+                    if not child:IsA("UIListLayout") then
+                        child:Destroy()
+                    end
+                end
+
+                for _, value in ipairs(option.Values or {}) do
+                    local item = Instance.new("TextButton", scroll)
+                    item.Size = UDim2.new(1, 0, 0, 26)
+                    item.BackgroundColor3 = THEME.Card
+                    item.BorderSizePixel = 0
+                    item.TextColor3 = THEME.Text
+                    item.Font = Enum.Font.Gotham
+                    item.TextSize = 8
+                    item.Text = tostring(value)
+                    item.ZIndex = 1002
+                    item.AutoButtonColor = false
+                    addCorner(item, 6)
+
+                    item.MouseEnter:Connect(function()
+                        item.BackgroundColor3 = Color3.fromRGB(15, 32, 15)
+                    end)
+
+                    item.MouseLeave:Connect(function()
+                        item.BackgroundColor3 = THEME.Card
+                    end)
+
+                    item.MouseButton1Click:Connect(function()
+                        if multi then
+                            local selected = clone(option.Value or {})
+
+                            if selected[value] then
+                                selected[value] = nil
+                            else
+                                selected[value] = true
+                            end
+
+                            option:SetValue(selected)
+                        else
+                            option:SetValue(value)
+                            popup.Visible = false
+                        end
+                    end)
+                end
+
+                scroll.CanvasSize = UDim2.new(
+                    0,
+                    0,
+                    0,
+                    list.AbsoluteContentSize.Y + 6
+                )
+
+                button.Text = displayValue(option.Value)
+            end
+
+            option._update = function(value)
+                button.Text = displayValue(value)
+            end
+
+            option._refreshValues = rebuild
+            option:SetValues(values)
+
+            button.MouseButton1Click:Connect(function()
+                popup.Visible = not popup.Visible
+            end)
+
+            return option
+        end
+
+        function api:AddInput(id, info)
+            info = info or {}
+
+            local option = registerOption(
+                id,
+                tostring(info.Default or ""),
+                "input",
+                info.Callback,
+                info
+            )
+
+            local row = Instance.new("Frame", content)
+            row.Size = UDim2.new(1, 0, 0, 54)
+            row.BackgroundTransparency = 1
+            row.ZIndex = 12
+
+            local label = createLabel(
+                row,
+                UDim2.new(1, 0, 0, 16),
+                UDim2.new(),
+                tostring(info.Text or id),
+                THEME.Text,
+                Enum.Font.GothamMedium,
+                9,
+                Enum.TextXAlignment.Left
+            )
+            label.ZIndex = 13
+
+            local input = Instance.new("TextBox", row)
+            input.Size = UDim2.new(1, 0, 0, 30)
+            input.Position = UDim2.new(0, 0, 0, 20)
+            input.BackgroundColor3 = THEME.ToggleOff
+            input.BorderSizePixel = 0
+            input.TextColor3 = THEME.Text
+            input.PlaceholderColor3 = THEME.SubText
+            input.Font = Enum.Font.Gotham
+            input.TextSize = 8
+            input.Text = tostring(option.Value)
+            input.PlaceholderText = tostring(info.Placeholder or "")
+            input.ZIndex = 13
+            addCorner(input, 7)
+
+            input.FocusLost:Connect(function()
+                option:SetValue(input.Text)
+            end)
+
+            option._update = function(value)
+                if not input:IsFocused() then
+                    input.Text = tostring(value)
+                end
+            end
+
+            return option
+        end
+
+        function api:AddLeftGroupbox(groupTitle)
+            return createControls(parent, groupTitle)
+        end
+
+        function api:AddRightGroupbox(groupTitle)
+            return createControls(parent, groupTitle)
+        end
+
+        function api:AddLeftTabbox()
+            local wrapper = {}
+
+            function wrapper:AddTab(tabTitle)
+                return createControls(parent, tabTitle)
+            end
+
+            return wrapper
+        end
+
+        function api:AddRightTabbox()
+            return self:AddLeftTabbox()
+        end
+
         return api
     end
 
-    local cw={Tabs={}}
-    function cw:AddTab(name,icon)
-        local b=Window:CreateTab(name,icon)
-        local t=controls(b.Page,name)
-        t.Page=b.Page; t.Btn=b.Btn; t.Text=b.Text; t.Icon=b.Icon
-        self.Tabs[#self.Tabs+1]=t
-        return t
-    end
-    function runtime:AddTab(name,icon)
-        return cw:AddTab(name,icon)
-    end
-    function runtime:CreateWindow()
-        return cw
-    end
-    function runtime:OnUnload(fn) if type(fn)=='function' then table.insert(self._unloadCallbacks,fn) end end
-    function runtime:Unload()
-        if self.Unloaded then return end; self.Unloaded=true
-        for _,fn in ipairs(self._unloadCallbacks) do pcall(fn) end
-        if self.ScreenGui and self.ScreenGui.Parent then self.ScreenGui:Destroy() end
-    end
+    -- Attach the advanced API to direct Window:CreateTab results.
+    local originalCreateTab = runtime.CreateTab
 
-    -- Compatibilidade para scripts que usam diretamente:
-    -- Window:CreateTab(...):AddLeftGroupbox / AddRightGroupbox / AddLeftTabbox
-    local rawCreateTab = runtime.CreateTab
-
-    local function attachTabCompat(tab)
+    local function attachTab(tab)
         function tab:AddLeftGroupbox(title)
-            return controls(tab.Page, title)
+            return createControls(tab.Page, title)
         end
 
         function tab:AddRightGroupbox(title)
-            return controls(tab.Page, title)
+            return createControls(tab.Page, title)
         end
 
         function tab:AddLeftTabbox()
-            local boxTab = {}
-            function boxTab:AddTab(title)
-                return controls(tab.Page, title)
+            local wrapper = {}
+
+            function wrapper:AddTab(title)
+                return createControls(tab.Page, title)
             end
-            return boxTab
+
+            return wrapper
         end
 
         function tab:AddRightTabbox()
@@ -698,16 +1330,37 @@ function DSHubLibrary.Init(options)
         return tab
     end
 
-    runtime.CreateTab = function(self, name, icon)
-        local tab = rawCreateTab(self, name, icon)
-        return attachTabCompat(tab)
+    runtime.CreateTab = function(self, tabName, iconText)
+        return attachTab(originalCreateTab(self, tabName, iconText))
     end
 
     for _, tab in ipairs(Window.Tabs) do
-        attachTabCompat(tab)
+        attachTab(tab)
     end
 
     runtime.AddTab = runtime.CreateTab
+
+    function runtime:OnUnload(callback)
+        if type(callback) == "function" then
+            table.insert(self._unloadCallbacks, callback)
+        end
+    end
+
+    function runtime:Unload()
+        if self.Unloaded then
+            return
+        end
+
+        self.Unloaded = true
+
+        for _, callback in ipairs(self._unloadCallbacks) do
+            pcall(callback)
+        end
+
+        if self.ScreenGui and self.ScreenGui.Parent then
+            self.ScreenGui:Destroy()
+        end
+    end
 
     local closing = false
     CloseBtn.MouseButton1Click:Connect(function()
