@@ -34,6 +34,28 @@ local Window = Library.Init({
     ConfigFile = "DSHub_v1_0_Config.json",
 })
 
+-- Abas são criadas imediatamente, antes de qualquer módulo do jogo ser carregado.
+-- Isso evita a janela vazia caso um WaitForChild/require demore.
+local MainTab = Window:CreateTab("Main", "⚡")
+local PlayerTab = Window:CreateTab("Player", "👤")
+local TeleportsTab = Window:CreateTab("Teleports", "📍")
+local CarTab = Window:CreateTab("Car Modify", "🚗")
+local WeaponTab = Window:CreateTab("Weapon", "⚔")
+local ESPTab = Window:CreateTab("ESP", "👁")
+local AutoFarmTab = Window:CreateTab("Auto Farm", "🤖")
+local SettingsTab = Window:CreateTab("Settings", "⚙")
+
+local tabs = {
+    Main = MainTab,
+    Player = PlayerTab,
+    Teleports = TeleportsTab,
+    Car = CarTab,
+    Weapon = WeaponTab,
+    ESP = ESPTab,
+    AutoFarm = AutoFarmTab,
+    Settings = SettingsTab,
+}
+
 -- Mantém somente o texto da intro "DS Hub" em verde neon.
 task.spawn(function()
     local parentGui = (typeof(gethui) == "function" and gethui())
@@ -7945,27 +7967,8 @@ function library.AutoFarm:Destroy(preserve)
     end
 end
 
-local window = library:CreateWindow({
-    Title = "DS HUB v1.0",
-    Footer = "DS HUB v1.0",
-    Size = UDim2.fromOffset(library.IsMobile and 560 or 640, library.IsMobile and 360 or 520),
-    NotifySide = "Right",
-    ShowCustomCursor = not library.IsMobile,
-    ShowMobileButtons = true,
-    MobileButtonsSide = "Left",
-    EnableCompacting = true,
-})
-
-local tabs = {
-    Main = window:AddTab("Main", "package", ""),
-    Player = window:AddTab("Player", "user", ""),
-    Teleports = window:AddTab("Teleports", "map-pin", ""),
-    Car = window:AddTab("Car Modify", "car-front", ""),
-    Weapon = window:AddTab("Weapon", "crosshair", ""),
-    ESP = window:AddTab("ESP", "eye", ""),
-    AutoFarm = window:AddTab("Auto Farm", "bot", ""),
-    Settings = window:AddTab("Settings", "settings", ""),
-}
+-- As abas já foram criadas no início. Aqui apenas usamos a biblioteca existente.
+local window = library
 
 if library.LobbyShop:IsLobby() then
     library.LobbyShop.Box = tabs.Main:AddLeftGroupbox("Lobby Shop", "store")
