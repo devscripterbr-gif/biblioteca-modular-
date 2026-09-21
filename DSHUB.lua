@@ -71,6 +71,7 @@ local toggles = library.Toggles or {}
 -- Abas são criadas imediatamente, antes de qualquer módulo do jogo ser carregado.
 -- Isso evita a janela vazia caso um WaitForChild/require demore.
 local MainTab = Window:CreateTab("Main", "⚡")
+local LootTab = Window:CreateTab("Loot", "📦")
 local PlayerTab = Window:CreateTab("Player", "👤")
 local TeleportsTab = Window:CreateTab("Teleports", "📍")
 local CarTab = Window:CreateTab("Car Modify", "🚗")
@@ -81,6 +82,7 @@ local SettingsTab = Window:CreateTab("Settings", "⚙")
 
 local tabs = {
     Main = MainTab,
+    Loot = LootTab,
     Player = PlayerTab,
     Teleports = TeleportsTab,
     Car = CarTab,
@@ -477,6 +479,7 @@ local function buildGroup(tab, sideName, title)
 
         local option = registerSlider(id, info)
         local card = createCard(content, 48)
+        card.ZIndex = 40
 
         createLabel(
             card,
@@ -609,6 +612,7 @@ local function buildGroup(tab, sideName, title)
 
         local button = Instance.new("TextButton")
         button.Size = UDim2.new(0.58, -4, 0, 28)
+        button.ZIndex = 41
         button.Position = UDim2.new(0.42, 0, 0, 7)
         button.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         button.BorderSizePixel = 0
@@ -624,7 +628,7 @@ local function buildGroup(tab, sideName, title)
 
         local popup = Instance.new("Frame")
         popup.Visible = false
-        popup.ZIndex = 100
+        popup.ZIndex = 200
         popup.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         popup.BorderSizePixel = 0
         popup.Position = UDim2.new(0.42, 0, 1, 2)
@@ -642,6 +646,7 @@ local function buildGroup(tab, sideName, title)
 
         local scroll = Instance.new("ScrollingFrame")
         scroll.Size = UDim2.new(1, -6, 1, -6)
+        scroll.ZIndex = 201
         scroll.Position = UDim2.new(0, 3, 0, 3)
         scroll.BackgroundTransparency = 1
         scroll.BorderSizePixel = 0
@@ -678,6 +683,7 @@ local function buildGroup(tab, sideName, title)
             for _, value in ipairs(option.Values or {}) do
                 local item = Instance.new("TextButton")
                 item.Size = UDim2.new(1, 0, 0, 24)
+                item.ZIndex = 202
                 item.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
                 item.BorderSizePixel = 0
                 item.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -700,7 +706,7 @@ local function buildGroup(tab, sideName, title)
                         option:SetValue(nextValue)
                     else
                         option:SetValue(value)
-                        popup.Visible = false
+                        setPopupOpen(false)
                     end
                 end)
             end
@@ -714,15 +720,51 @@ local function buildGroup(tab, sideName, title)
 
         option._refreshValues = rebuild
 
+        layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            scroll.CanvasSize = UDim2.new(
+                0,
+                0,
+                0,
+                layout.AbsoluteContentSize.Y + 6
+            )
+        end)
+
+        local function setPopupOpen(open)
+            popup.Visible = open
+            card.ZIndex = open and 250 or 40
+            button.ZIndex = open and 251 or 41
+            popup.ZIndex = open and 252 or 200
+            scroll.ZIndex = open and 253 or 201
+
+            if open then
+                for _, child in ipairs(scroll:GetChildren()) do
+                    if child:IsA("TextButton") then
+                        child.ZIndex = 254
+                    end
+                end
+            end
+        end
+
         button.MouseButton1Click:Connect(function()
-            popup.Visible = not popup.Visible
+            setPopupOpen(not popup.Visible)
         end)
 
         function option:SetValues(values)
             self.Values = values or {}
             rebuild()
 
-            if self.Value and not self.Multi then
+            if self.Multi then
+                local current = type(self.Value) == "table" and self.Value or {}
+                local filtered = {}
+
+                for _, value in ipairs(self.Values) do
+                    if current[value] then
+                        filtered[value] = true
+                    end
+                end
+
+                self.Value = filtered
+            elseif self.Value ~= nil then
                 local valid = false
                 for _, value in ipairs(self.Values) do
                     if value == self.Value then
@@ -8862,12 +8904,14 @@ if library.LobbyShop:IsLobby() then
     library.LobbyShop.Box = tabs.Main:AddLeftGroupbox("Lobby Shop", "store")
 end
 
-lootBox = tabs.Main:AddLeftGroupbox("Loot", "package-open")
-sellBox = tabs.Main:AddLeftGroupbox("Money", "badge-dollar-sign")
-tabs.RemoteShopBox = tabs.Main:AddLeftGroupbox("Remote Shop", "shopping-cart")
-npcBox = library.IsMobile and tabs.Main:AddLeftGroupbox("NPCs", "users") or tabs.Main:AddRightGroupbox("NPCs", "users")
-bringItems.Box = library.IsMobile and tabs.Main:AddLeftGroupbox("Bring Items", "package-plus") or tabs.Main:AddRightGroupbox("Bring Items", "package-plus")
-utilityBox = library.IsMobile and tabs.Main:AddLeftGroupbox("Utility", "wrench") or tabs.Main:AddRightGroupbox("Utility", "wrench")
+npcBox = library.IsMobile and tabs.Main:AddLeftGroupbox("Combat & NPCs", "users") or tabs.Main:AddRightGroupbox("Combat & NPCs", "users")
+
+utilityBox = library.IsMobile and tabs.Main:AddLeftGroupbox("Utilities", "wrench") or tabs.Main:AddRightGroupbox("Utilities", "wrench")
+
+lootBox = tabs.Loot:AddLeftGroupbox("Loot", "package-open")
+sellBox = tabs.Loot:AddLeftGroupbox("Money", "badge-dollar-sign")
+tabs.RemoteShopBox = tabs.Loot:AddLeftGroupbox("Remote Shop", "shopping-cart")
+bringItems.Box = library.IsMobile and tabs.Loot:AddLeftGroupbox("Bring Items", "package-plus") or tabs.Loot:AddRightGroupbox("Bring Items", "package-plus")
 movementBox = tabs.Player:AddLeftGroupbox("Movement", "gauge")
 worldBox = library.IsMobile and tabs.Player:AddLeftGroupbox("Camera and World", "camera") or tabs.Player:AddRightGroupbox("Camera and World", "camera")
 punchMods.Box = library.IsMobile and tabs.Player:AddLeftGroupbox("Melee Mods", "hand") or tabs.Player:AddRightGroupbox("Melee Mods", "hand")
@@ -9194,6 +9238,10 @@ sellBox:AddButton("Break Nearby Cash Sources", function()
     notify(string.format("Break requests: %d.", count), 4)
 end)
 
+tabs.Main:AddLeftGroupbox("Quick Start", "layout-dashboard"):AddLabel(
+    "Use Loot para Bring e itens; Player para movimento; Teleports para locais; Weapon/ESP para combate; Auto Farm para automação."
+)
+
 if library.LobbyShop.Box then
     library.LobbyShop.Box:AddLabel("Credz purchases only")
     library.LobbyShop.Box:AddDropdown("RunawaysLobbyShopCategory", {
@@ -9248,7 +9296,7 @@ local function makeFullWidth(tab)
 end
 
 if library.IsMobile then
-    for _, tab in { tabs.Main, tabs.Player, tabs.Teleports, tabs.Car, tabs.Weapon, tabs.ESP, tabs.AutoFarm, tabs.Settings } do
+    for _, tab in { tabs.Main, tabs.Loot, tabs.Player, tabs.Teleports, tabs.Car, tabs.Weapon, tabs.ESP, tabs.AutoFarm, tabs.Settings } do
         makeFullWidth(tab)
     end
 else
@@ -9267,6 +9315,9 @@ else
     tabs.ESP:RefreshSides()
 end
 
+lootBox:AddLabel("Selecione itens específicos e use as opções de coleta abaixo.")
+lootBox:AddDivider()
+
 lootBox:AddDropdown("LootItems", {
     Values = bringItems.Names,
     Default = {},
@@ -9277,6 +9328,9 @@ lootBox:AddDropdown("LootItems", {
     FormatDisplayValue = formatName,
     FormatListValue = formatName,
 })
+
+bringItems.Box:AddLabel("Escolha os itens ou categorias que o Bring deve transportar.")
+bringItems.Box:AddDivider()
 
 bringItems.Box:AddDropdown("RunawaysBringItems", {
     Values = bringItems.Names,
