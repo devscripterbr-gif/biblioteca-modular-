@@ -362,9 +362,12 @@ local function buildGroup(tab, sideName, title)
     end
 
     function group:AddButton(textOrInfo, callback)
-        local text = type(textOrInfo) == "table"
-            and (textOrInfo.Text or textOrInfo.Name or "Button")
+        local infoTable = type(textOrInfo) == "table" and textOrInfo or nil
+        local text = infoTable
+            and (infoTable.Text or infoTable.Name or "Button")
             or textOrInfo
+        local action = callback
+            or (infoTable and (infoTable.Func or infoTable.Callback or infoTable.Action))
 
         local card = createCard(content, 32)
 
@@ -378,7 +381,7 @@ local function buildGroup(tab, sideName, title)
         button.Parent = card
 
         button.MouseButton1Click:Connect(function()
-            safeCallback(callback)
+            safeCallback(action)
         end)
 
         return card
@@ -442,6 +445,29 @@ local function buildGroup(tab, sideName, title)
         click.MouseButton1Click:Connect(function()
             option:SetValue(not option.Value)
         end)
+
+        function option:AddColorPicker(colorId, colorInfo)
+            colorInfo = colorInfo or {}
+            local colorOption = registerOption(colorId, "color", colorInfo)
+            colorOption.Value = colorInfo.Default or Color3.fromRGB(0, 255, 100)
+            colorOption.Callback = colorInfo.Callback
+            self.ColorPicker = colorOption
+            return self
+        end
+
+        function option:AddKeyPicker(keyId, keyInfo)
+            -- The old authentication key system is removed.
+            -- Feature keybinds remain harmless UI metadata and can be
+            -- implemented later without blocking the feature chain.
+            self.KeyPicker = {
+                Id = keyId,
+                Default = keyInfo and keyInfo.Default,
+                Text = keyInfo and keyInfo.Text,
+                SyncToggleState = keyInfo and keyInfo.SyncToggleState,
+                Mode = keyInfo and keyInfo.Mode,
+            }
+            return self
+        end
 
         return option
     end
