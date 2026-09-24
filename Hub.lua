@@ -232,6 +232,7 @@ function DSHubLibrary.Init(config)
         page.ScrollBarImageColor3 = THEME.Accent
         page.CanvasSize = UDim2.new(0, 0, 0, 0)
         page.Visible = index == 0
+        page.ZIndex = 20
         page.Parent = pages
 
         local pad = Instance.new("UIPadding")
@@ -245,6 +246,7 @@ function DSHubLibrary.Init(config)
         list.Padding = UDim.new(0, 7)
         list.Parent = page
 
+        page.ZIndex = 20
         list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
             page.CanvasSize = UDim2.new(0, 0, 0, list.AbsoluteContentSize.Y + 12)
         end)
