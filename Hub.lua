@@ -112,7 +112,7 @@ function DSHubLibrary.Init(options)
 
     local MainContainer = Instance.new("Frame", ScreenGui)
     MainContainer.Name = "MainContainer"
-    MainContainer.Size = UDim2.new(0, 480, 0, 300)
+    MainContainer.Size = UDim2.new(0, 400, 0, 250)
     MainContainer.AnchorPoint = Vector2.new(0.5, 0.5)
     MainContainer.Position = savedData.NormalScaleX and UDim2.new(savedData.NormalScaleX, savedData.NormalPosX, savedData.NormalScaleY, savedData.NormalPosY) or UDim2.new(0.5, 0, 0.5, 0)
     MainContainer.BackgroundTransparency = 1
@@ -256,8 +256,8 @@ function DSHubLibrary.Init(options)
     end)
 
     local isMinimized = false
-    local normalSize = UDim2.new(0, 480, 0, 300)
-    local compactSize = UDim2.new(0, 190, 0, 38)
+    local normalSize = UDim2.new(0, 400, 0, 250)
+    local compactSize = UDim2.new(0, 170, 0, 38)
 
     local currentNormalPos = UDim2.new(savedData.NormalScaleX or 0.5, savedData.NormalPosX or 0, savedData.NormalScaleY or 0.5, savedData.NormalPosY or 0)
     local currentMinPos = UDim2.new(savedData.MinScaleX or savedData.NormalScaleX or 0.5, savedData.MinPosX or savedData.NormalPosX or 0, savedData.MinScaleY or savedData.NormalScaleY or 0.5, savedData.MinPosY or savedData.NormalPosY or 0)
@@ -333,7 +333,7 @@ function DSHubLibrary.Init(options)
     MinimizeBtn.TextSize = 12
 
     local Sidebar = Instance.new("Frame", InnerWrapper)
-    Sidebar.Size = UDim2.new(0, 130, 1, -38)
+    Sidebar.Size = UDim2.new(0, 112, 1, -38)
     Sidebar.Position = UDim2.new(0, 0, 0, 38)
     Sidebar.BackgroundColor3 = THEME.Sidebar
     Sidebar.BorderSizePixel = 0
@@ -397,8 +397,8 @@ function DSHubLibrary.Init(options)
     end)
 
     local ContentContainer = Instance.new("Frame", InnerWrapper)
-    ContentContainer.Size = UDim2.new(1, -140, 1, -44)
-    ContentContainer.Position = UDim2.new(0, 135, 0, 42)
+    ContentContainer.Size = UDim2.new(1, -122, 1, -44)
+    ContentContainer.Position = UDim2.new(0, 117, 0, 42)
     ContentContainer.BackgroundTransparency = 1
 
     MakeDraggable(MainContainer, TopBar)
@@ -550,17 +550,9 @@ function DSHubLibrary.Init(options)
     runtime.Unloaded=false
     runtime._unloadCallbacks={}
 
-    local notifyHolder=Instance.new("Frame",ScreenGui)
-    notifyHolder.BackgroundTransparency=1; notifyHolder.AnchorPoint=Vector2.new(1,0)
-    notifyHolder.Position=UDim2.new(1,-12,0,12); notifyHolder.Size=UDim2.new(0,300,1,-24); notifyHolder.ZIndex=900
-    local nl=Instance.new("UIListLayout",notifyHolder); nl.HorizontalAlignment=Enum.HorizontalAlignment.Right; nl.VerticalAlignment=Enum.VerticalAlignment.Top; nl.Padding=UDim.new(0,6)
-
-    function runtime:Notify(i)
-        i=i or {}; local c=Instance.new("Frame",notifyHolder); c.Size=UDim2.new(1,0,0,58); c.BackgroundColor3=THEME.Card; c.BorderSizePixel=0; c.ZIndex=901; addCorner(c,9)
-        local s=Instance.new("UIStroke",c); s.Color=THEME.Accent; s.Thickness=.8
-        createLabel(c,UDim2.new(1,-16,0,17),UDim2.new(0,8,0,6),tostring(i.Title or "DS HUB"),THEME.Accent,Enum.Font.GothamBold,10,Enum.TextXAlignment.Left)
-        local d=createLabel(c,UDim2.new(1,-16,0,28),UDim2.new(0,8,0,24),tostring(i.Description or ""),THEME.Text,Enum.Font.Gotham,9,Enum.TextXAlignment.Left); d.TextWrapped=true
-        task.delay(tonumber(i.Time) or 4,function() if c.Parent then c:Destroy() end end)
+        -- Notificações desativadas. A API permanece para compatibilidade.
+    function runtime:Notify(_)
+        return false
     end
 
     local function clone(v) if type(v)~='table' then return v end local t={} for k,x in pairs(v) do t[k]=x end return t end
