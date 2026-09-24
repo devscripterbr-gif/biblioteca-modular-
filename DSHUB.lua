@@ -40,11 +40,6 @@ end
 env.DSHUB_CREDZ_GENERATION = (tonumber(env.DSHUB_CREDZ_GENERATION) or 0) + 1
 local generation = env.DSHUB_CREDZ_GENERATION
 
-local function alive()
-    return env.DSHUB_CREDZ_GENERATION == generation
-        and not Window.Unloaded
-end
-
 local Library = loadHub()
 
 local Window = Library.Init({
@@ -57,17 +52,23 @@ env.DSHUB_CURRENT_WINDOW = Window
 
 local AutoFarmTab = Window:CreateTab("🎟️ Auto Farm")
 
+local function alive()
+    return env.DSHUB_CREDZ_GENERATION == generation
+        and Window
+        and not Window.Unloaded
+end
+
 local ENABLED_KEY = "DSHUB_AUTOFARM_CREDZ_ENABLED"
 local PHASE_KEY = "DSHUB_AUTOFARM_CREDZ_PHASE"
 
 local function readSetting(key)
     local value
 
-    pcall(function()
+    local ok = pcall(function()
         value = TeleportService:GetTeleportSetting(key)
     end)
 
-    if value ~= nil then
+    if ok and value ~= nil then
         return value
     end
 
@@ -770,5 +771,6 @@ if enabled then
 end
 
 env.DSHUB_AUTOFARM_LOADED = true
+print("[DS HUB] v1.0 carregado: 🎟️ Auto Farm / Auto Farm Credz")
 
 return Window
