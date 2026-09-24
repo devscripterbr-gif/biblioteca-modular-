@@ -754,64 +754,236 @@ local function moveThreeTimes(destination)
     return true
 end
 
-local function getPromptWorldPosition(prompt)
-    if not prompt or not prompt.Parent then
+local function getFinalDoor()
+    local map = workspace:FindFirstChild("Map")
+    local buildings = map and map:FindFirstChild("Buildings")
+    local customs = buildings and buildings:FindFirstChild("CustomsFinal")
+    local customsBuilding = customs and customs:FindFirstChild("CustomsBuilding")
+    local finalDoor = customsBuilding and customsBuilding:FindFirstChild("FinalDoor")
+    return finalDoor
+end
+
+local function getExactFinalPrompt()
+    local finalDoor = getFinalDoor()
+    local command = finalDoor and finalDoor:FindFirstChild("Command")
+    local commandButton = command and command:FindFirstChild("CommandButton")
+    local holder = commandButton and commandButton:FindFirstChild("Prompt")
+
+    if holder then
+        if holder:IsA("ProximityPrompt") then
+            return holder
+        end
+
+        local prompt = holder:FindFirstChildOfClass("ProximityPrompt")
+        if prompt then
+            return prompt
+        end
+
+        local descendants = holder:GetDescendants()
+        for _, object in ipairs(descendants) do
+            if object:IsA("ProximityPrompt") then
+                return object
+            end
+        end
+    end
+
+    -- Fallback restricted to FinalDoor, so unrelated prompts are never fired.
+    if finalDoor then
+        for _, object in ipairs(finalDoor:GetDescendants()) do
+            if object:IsA("ProximityPrompt") then
+                return object
+            end
+        end
+    end
+end
+
+local function getDoorRCFrame()
+    local finalDoor = getFinalDoor()
+    local doorR = finalDoor and finalDoor:FindFirstChild("DoorR", true)
+
+    if not doorR then
         return nil
     end
 
-    local parent = prompt.Parent
-
-    if parent:IsA("Attachment") then
-        return parent.WorldPosition
+    if doorR:IsA("BasePart") then
+        return doorR.CFrame
     end
 
-    if parent:IsA("BasePart") then
-        return parent.Position
-    end
-
-    local model = prompt:FindFirstAncestorOfClass("Model")
-    if model then
-        local ok, pivot = pcall(model.GetPivot, model)
+    if doorR:IsA("Model") then
+        local ok, pivot = pcall(doorR.GetPivot, doorR)
         if ok and pivot then
-            return pivot.Position
+            return pivot
         end
     end
 
     return nil
 end
 
-local function fireAnyPromptWithinTenStuds()
-    if type(fireproximityprompt) ~= "function" then
-        return false, 0
+local function fireFinalDoorPrompt()
+    local prompt = getExactFinalPrompt()
+
+    if not prompt or not prompt.Parent then
+        return false
     end
 
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root then
-        return false, 0
-    end
-
-    local firedCount = 0
-
-    for _, object in ipairs(workspace:GetDescendants()) do
-        if object:IsA("ProximityPrompt") and object.Enabled then
-            local promptPosition = getPromptWorldPosition(object)
-
-            if promptPosition
-                and (root.Position - promptPosition).Magnitude <= 10
-            then
-                local ok = pcall(function()
-                    fireproximityprompt(object)
-                end)
-
-                if ok then
-                    firedCount += 1
-                end
-            end
+    if type(fireproximityprompt) == "function" then
+        local ok = pcall(function()
+            fireproximityprompt(prompt)
+        end)
+        if ok then
+            return true
         end
     end
 
-    return firedCount > 0, firedCount
+    -- Fallback for executors that do not expose fireproximityprompt.
+    local ok = pcall(function()
+        local oldDuration = prompt.HoldDuration
+        prompt.HoldDuration = 0
+        prompt:InputHoldBegin()
+        task.wait(0.1)
+        prompt:InputHoldEnd()
+        prompt.HoldDuration = oldDuration
+    end)
+
+    return ok
+end
+
+local function getTimerLabel()
+    local finalDoor = getFinalDoor()
+    if not finalDoor then
+        return nil
+    end
+
+    -- Exact path shown in the Explorer screenshots:
+    -- FinalDoor > Command > Screen > SurfaceGui > Frame > Timer > Time
+    local command = finalDoor:FindFirstChild("Command")
+    local screen = command and command:FindFirstChild("Screen")
+    local surfaceGui = screen and screen:FindFirstChild("SurfaceGui")
+    local frame = surfaceGui and surfaceGui:FindFirstChild("Frame")
+    local timer = frame and frame:FindFirstChild("Timer")
+    local timeLabel = timer and timer:FindFirstChild("Time")
+
+    if timeLabel
+        and (timeLabel:IsA("TextLabel")
+            or timeLabel:IsA("TextButton")
+            or timeLabel:IsA("TextBox"))
+    then
+        return timeLabel
+    end
+
+    -- Fallback: only search the same FinalDoor for an object named Time.
+    for _, object in ipairs(finalDoor:GetDescendants()) do
+        if object.Name == "Time"
+            and (object:IsA("TextLabel")
+                or object:IsA("TextButton")
+                or object:IsA("TextBox"))
+        then
+            return object
+        end
+    end
+end
+
+local function parseTimerText(text)
+    text = tostring(text or "")
+
+    -- Screenshot format: "2m 00s".
+    local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)
+    end
+
+    -- Accept common variants too, without replacing the Time label logic.
+    minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)
+    end
+
+    local onlySeconds = text:match("^(%d+)%s*[sS]$")
+    if onlySeconds then
+        return tonumber(onlySeconds)
+    end
+
+    local number = text:match("^(%d+)$")
+    if number then
+        return tonumber(number)
+    end
+
+    return nil
+end
+
+local function waitForTimerZero(timeout)
+    local deadline = os.clock() + (timeout or 180)
+
+    while current() and os.clock() < deadline do
+        local label = getTimerLabel()
+
+        if label then
+            local remaining = parseTimerText(label.Text)
+            if remaining ~= nil and remaining <= 0 then
+                return true
+            end
+        end
+
+        task.wait(0.1)
+    end
+
+    return false
+end
+
+local function teleportFromDoorR(directionVector, seconds)
+    local base = getDoorRCFrame()
+    if not base then
+        return false
+    end
+
+    -- Direction is relative to DoorR's own orientation.
+    local offset = base.RightVector * directionVector.X
+        + base.UpVector * directionVector.Y
+        + base.LookVector * directionVector.Z
+
+    if offset.Magnitude <= 0.001 then
+        return false
+    end
+
+    local sidePosition = base.Position + offset.Unit * 10
+
+    -- Preserve exactly the DoorR rotation while moving 10 studs.
+    local sideDestination = CFrame.new(sidePosition) * base.Rotation
+
+    if not teleportCFrame(sideDestination) then
+        return false
+    end
+
+    task.wait(seconds or 0.50)
+
+    -- Always return to the original DoorR point before the next direction.
+    return teleportCFrame(base)
+end
+
+local function runDoorRSideTeleports()
+    local base = getDoorRCFrame()
+    if not base then
+        return false
+    end
+
+    local directions = {
+        {X = 0, Y = 0, Z = -1}, -- frente
+        {X = 0, Y = 0, Z = 1},  -- trás
+        {X = 1, Y = 0, Z = 0},  -- direita
+        {X = -1, Y = 0, Z = 0}, -- esquerda
+    }
+
+    for _, direction in ipairs(directions) do
+        if not current() then
+            return false
+        end
+
+        if not teleportFromDoorR(direction, 0.50) then
+            return false
+        end
+    end
+
+    return true
 end
 
 
@@ -836,12 +1008,7 @@ function teleports:ToEnd()
     if prompt then
         local destination = self:GetEndPromptDestination(prompt, direction)
         if destination and moveThreeTimes(destination) then
-            -- Depois de carregar o final, dispara qualquer ProximityPrompt
-            -- habilitado que esteja a até 10 studs do player.
-            local fired = fireAnyPromptWithinTenStuds()
-            if fired then
-                return true
-            end
+            return true
         end
     end
 
@@ -861,10 +1028,7 @@ function teleports:ToEnd()
         if prompt then
             local destination = self:GetEndPromptDestination(prompt, direction)
             if destination and moveThreeTimes(destination) then
-                local fired = fireAnyPromptWithinTenStuds()
-                if fired then
-                    return true
-                end
+                return true
             end
         end
         task.wait(0.2)
@@ -874,21 +1038,8 @@ function teleports:ToEnd()
 end
 
 -- ----------------------------------------------------------
--- Farm / final CFrames
+-- DoorR / EndScreen process helpers
 -- ----------------------------------------------------------
-local FARM_CFRAME = CFrame.new(
-    1547.35474, 2856.56885, 83605.9609,
-    1, 0, 0,
-    0, 1, 0,
-    0, 0, 1
-)
-
-local FINAL_CFRAME = CFrame.new(
-    -682.203064, 1783.02539, 83632.25,
-    -1, 0, 0,
-    0, 1, 0,
-    0, 0, -1
-)
 
 local function teleportCFrame(destination)
     if typeof(destination) ~= "CFrame" then
@@ -996,7 +1147,7 @@ local function gamePhase()
 
     writeSetting(PHASE_KEY, "GameEnd")
 
-    -- Primeiro chega ao portal/final usando a cadeia antiga de RUNAWAYS.
+    -- 1) Carrega o final usando a cadeia antiga e os 3 teleportes de 1s.
     local ok = teleports:ToEnd()
     if not ok then
         task.wait(1)
@@ -1007,57 +1158,65 @@ local function gamePhase()
         return true
     end
 
-    -- Apaga qualquer Helicopter antes de entrar na etapa de farm.
     removeHelicopters()
 
-    writeSetting(PHASE_KEY, "Farm")
+    -- 2) Vai para o DoorR, que é o ponto inicial dos quatro teleportes.
+    writeSetting(PHASE_KEY, "DoorR")
 
-    if not teleportCFrame(FARM_CFRAME) then
+    local doorRCFrame = getDoorRCFrame()
+    if not doorRCFrame then
         task.wait(1)
         return true
     end
 
-    -- Mantém os NPCs dentro de 300 studs sendo processados durante 2 minutos.
-    local deadline = os.clock() + 120
+    if not teleportCFrame(doorRCFrame) then
+        task.wait(1)
+        return true
+    end
 
-    while current() and os.clock() < deadline do
-        removeHelicopters()
+    -- 3) Dispara especificamente o ProximityPrompt de
+    -- FinalDoor > Command > CommandButton > Prompt.
+    fireFinalDoorPrompt()
 
-        -- Várias passagens por segundo para pegar NPCs que spawnarem depois.
-        killNPCs(300)
-        task.wait(0.10)
+    -- 4) Não usa um timer interno de 2 minutos.
+    -- O cronômetro oficial é o TextLabel "Time" do mapa.
+    writeSetting(PHASE_KEY, "WaitingTime")
 
-        if not current() then
-            break
-        end
+    if not waitForTimerZero(180) then
+        return true
     end
 
     if not current() then
         return true
     end
 
-    writeSetting(PHASE_KEY, "Final")
+    -- 5) Quando o Time chegar a 0:
+    -- frente -> volta DoorR -> trás -> volta -> direita -> volta -> esquerda -> volta.
+    -- Cada posição lateral permanece por exatamente 0.50s.
+    writeSetting(PHASE_KEY, "DoorRSideTeleports")
 
-    -- Último teleporte: CFrame exato fornecido.
-    if not teleportCFrame(FINAL_CFRAME) then
+    if not runDoorRSideTeleports() then
         task.wait(1)
         return true
     end
 
-    -- A partir daqui não executa mais nenhuma etapa:
-    -- apenas espera o EndScreen aparecer.
+    if not current() then
+        return true
+    end
+
+    -- 6) Só depois do último retorno ao DoorR espera o EndScreen.
+    writeSetting(PHASE_KEY, "WaitingEndScreen")
+
     if not waitForEndScreen() then
         return true
     end
 
+    -- 7) EndScreen encontrado: Replay uma única vez e não executa
+    -- nenhuma outra etapa nesta instância.
     writeSetting(PHASE_KEY, "WaitingForServerTransition")
-
-    -- Assim que EndScreen existir, envia Replay uma única vez.
     queueResume()
     fireFlow("GameManager", "Replay")
 
-    -- Não faz mais nada nesta instância. O queue_on_teleport
-    -- inicia o DSHUB novamente quando o servidor mudar.
     while current() do
         task.wait(1)
     end
