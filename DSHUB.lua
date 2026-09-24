@@ -244,12 +244,23 @@ local function fireFlow(...)
 end
 
 local flowCache = nil
-local function getFlowModule()
-    if flowCache then
+
+local function getFlowModule(forceRefresh)
+    if forceRefresh then
+        flowCache = nil
+    end
+
+    if flowCache
+        and type(flowCache) == "table"
+        and flowCache.NPCs
+        and type(flowCache.NPCs.Damage) == "function"
+    then
         return flowCache
     end
 
     local flowModule = ReplicatedStorage:FindFirstChild("FlowClient")
+        or ReplicatedStorage:WaitForChild("FlowClient", 10)
+
     if not flowModule then
         return nil
     end
@@ -258,6 +269,44 @@ local function getFlowModule()
     if ok and type(flow) == "table" then
         flowCache = flow
         return flow
+    end
+
+    flowCache = nil
+    return nil
+end
+
+local function getNPCHumanoids(folder)
+    if not folder then
+        return {}
+    end
+
+    local ok, result = pcall(function()
+        if type(folder.QueryDescendants) == "function" then
+            return folder:QueryDescendants("Humanoid")
+        end
+        return nil
+    end)
+
+    if ok and type(result) == "table" then
+        return result
+    end
+
+    local humanoids = {}
+    for _, object in ipairs(folder:GetDescendants()) do
+        if object:IsA("Humanoid") then
+            humanoids[#humanoids + 1] = object
+        end
+    end
+    return humanoids
+end
+
+local function removeHelicopters()
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("Model") and object.Name == "Helicopter" then
+            pcall(function()
+                object:Destroy()
+            end)
+        end
     end
 end
 
@@ -291,9 +340,7 @@ end
 -- ----------------------------------------------------------
 local function killNPCs(radius)
     local folder = workspace:FindFirstChild("NPCs")
-    local flow = getFlowModule()
-
-    if not folder or not flow or not flow.NPCs or type(flow.NPCs.Damage) ~= "function" then
+    if not folder then
         return 0
     end
 
@@ -303,17 +350,47 @@ local function killNPCs(radius)
         return 0
     end
 
+    local flow = getFlowModule()
+    if not flow or not flow.NPCs or type(flow.NPCs.Damage) ~= "function" then
+        flow = getFlowModule(true)
+    end
+
+    if not flow or not flow.NPCs or type(flow.NPCs.Damage) ~= "function" then
+        return 0
+    end
+
+    local humanoids = getNPCHumanoids(folder)
     local count = 0
 
-    for _, object in ipairs(folder:GetDescendants()) do
-        if object:IsA("Humanoid") and object.Health > 0 then
-            local npc = object:FindFirstAncestorWhichIsA("Model")
+    for _, humanoid in ipairs(humanoids) do
+        if humanoid
+            and humanoid.Parent
+            and humanoid.Health > 0
+        then
+            local npc = humanoid:FindFirstAncestorWhichIsA("Model")
             local npcRoot = npc and npc:FindFirstChild("HumanoidRootPart")
 
-            if npcRoot and (npcRoot.Position - root.Position).Magnitude <= radius then
-                local ok = pcall(flow.NPCs.Damage, object, object.Health + 1)
-                if ok then
-                    count += 1
+            if npcRoot
+                and (npcRoot.Position - root.Position).Magnitude <= radius
+            then
+                -- Repete o mesmo método do RUNAWAYS original para garantir
+                -- que NPCs recém-carregados também recebam o dano final.
+                for _ = 1, 3 do
+                    if humanoid.Health <= 0 or not humanoid.Parent then
+                        break
+                    end
+
+                    local dealt = pcall(
+                        flow.NPCs.Damage,
+                        humanoid,
+                        humanoid.Health + 1
+                    )
+
+                    if dealt then
+                        count += 1
+                    end
+
+                    task.wait(0.05)
                 end
             end
         end
@@ -636,6 +713,57 @@ function teleports:ToEnd()
 end
 
 -- ----------------------------------------------------------
+-- Farm / final CFrames
+-- ----------------------------------------------------------
+local FARM_CFRAME = CFrame.new(
+    1547.35474, 2856.56885, 83605.9609,
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1
+)
+
+local FINAL_CFRAME = CFrame.new(
+    -682.203064, 1783.02539, 83632.25,
+    -1, 0, 0,
+    0, 1, 0,
+    0, 0, -1
+)
+
+local function teleportCFrame(destination)
+    if typeof(destination) ~= "CFrame" then
+        return false
+    end
+
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if not character or not humanoid or not root or humanoid.Health <= 0 then
+        return false
+    end
+
+    pcall(function()
+        player:RequestStreamAroundAsync(destination.Position, 12)
+    end)
+
+    return teleports:Move(destination)
+end
+
+local function waitForEndScreen()
+    while current() do
+        local endScreen = workspace:FindFirstChild("EndScreen", true)
+
+        if endScreen and endScreen:IsA("Model") then
+            return true
+        end
+
+        task.wait(0.25)
+    end
+
+    return false
+end
+
+-- ----------------------------------------------------------
 -- Process state machine
 -- ----------------------------------------------------------
 local function waitSeconds(seconds)
@@ -707,9 +835,9 @@ local function gamePhase()
 
     writeSetting(PHASE_KEY, "GameEnd")
 
+    -- Primeiro chega ao portal/final usando a cadeia antiga de RUNAWAYS.
     local ok = teleports:ToEnd()
     if not ok then
-        -- Dá tempo para a estrutura do fim aparecer antes de tentar novamente.
         task.wait(1)
         return true
     end
@@ -718,35 +846,61 @@ local function gamePhase()
         return true
     end
 
+    -- Apaga qualquer Helicopter antes de entrar na etapa de farm.
+    removeHelicopters()
+
     writeSetting(PHASE_KEY, "Farm")
 
-    if not teleportCharacter(Vector3.new(463, 1797, 83540)) then
+    if not teleportCFrame(FARM_CFRAME) then
         task.wait(1)
         return true
     end
 
+    -- Mantém os NPCs dentro de 300 studs sendo processados durante 2 minutos.
     local deadline = os.clock() + 120
+
     while current() and os.clock() < deadline do
+        removeHelicopters()
+
+        -- Várias passagens por segundo para pegar NPCs que spawnarem depois.
         killNPCs(300)
-        task.wait(0.15)
+        task.wait(0.10)
+
+        if not current() then
+            break
+        end
     end
 
     if not current() then
         return true
     end
 
-    writeSetting(PHASE_KEY, "Replay")
+    writeSetting(PHASE_KEY, "Final")
 
-    teleportCharacter(Vector3.new(1060, 2287, 83726))
-    if not waitSeconds(3) then
+    -- Último teleporte: CFrame exato fornecido.
+    if not teleportCFrame(FINAL_CFRAME) then
+        task.wait(1)
         return true
     end
 
+    -- A partir daqui não executa mais nenhuma etapa:
+    -- apenas espera o EndScreen aparecer.
+    if not waitForEndScreen() then
+        return true
+    end
+
+    writeSetting(PHASE_KEY, "WaitingForServerTransition")
+
+    -- Assim que EndScreen existir, envia Replay uma única vez.
     queueResume()
     fireFlow("GameManager", "Replay")
 
-    -- Dá espaço para o replay trocar a cena antes da próxima passagem.
-    waitForMap(90)
+    -- Não faz mais nada nesta instância. O queue_on_teleport
+    -- inicia o DSHUB novamente quando o servidor mudar.
+    while current() do
+        task.wait(1)
+    end
+
     return true
 end
 
@@ -761,6 +915,7 @@ local function start()
     task.spawn(function()
         while current() do
             freezePlayer()
+            removeHelicopters()
 
             if lobbyPhase() then
                 task.wait(0.5)
@@ -797,6 +952,7 @@ AutoFarmTab:CreateToggle(
         writeSetting(ENABLED_KEY, value)
 
         if value then
+            removeHelicopters()
             freezePlayer()
             queueResume()
             start()
@@ -809,6 +965,7 @@ AutoFarmTab:CreateToggle(
 )
 
 if enabled then
+    removeHelicopters()
     freezePlayer()
     task.defer(start)
 end
