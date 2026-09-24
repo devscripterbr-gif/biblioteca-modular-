@@ -48,7 +48,8 @@ local Window = Library.Init({
     ConfigFile = "DSHub_v1_0_Config.json",
 })
 
-local AutoFarmTab = Window:CreateTab("🎟️ Auto Farm")
+-- Separado o Nome do Ícone para respeitar a assinatura de Hub.lua: CreateTab(tabName, icon)
+local AutoFarmTab = Window:CreateTab("Auto Farm", "🎟️")
 
 Window:Notify({
     Title = "DS HUB v1.0",
@@ -138,6 +139,7 @@ local function getFlowEvent()
     return runner and runner:FindFirstChild("Event")
 end
 
+-- CORREÇÃO DO ERRO DE VARARGS: Definido (...) e repassado via unpack()
 local function fireFlow(...)
     local event = getFlowEvent()
 
@@ -145,8 +147,9 @@ local function fireFlow(...)
         return false, "FlowClient.ClientRunner.Event não encontrado"
     end
 
+    local args = { ... }
     return pcall(function()
-        event:FireServer(...)
+        event:FireServer(unpack(args))
     end)
 end
 
@@ -215,8 +218,6 @@ local function killNPCs(radius)
     end
 end
 
--- End-game helper from the old script, simplified to keep only
--- the part required by this single automation.
 local function toEnd()
     local map = workspace:FindFirstChild("Map")
 
