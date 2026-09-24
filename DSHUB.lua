@@ -55,16 +55,22 @@ local Window = Library.Init({
 
 local AutoFarmTab = Window:CreateTab("🎟️ Auto Farm")
 
+Window:Notify({
+    Title = "DS HUB v1.0",
+    Description = "🎟️ Auto Farm carregado.",
+    Time = 2,
+})
+
 local STATE_KEY = "DSHUB_AUTOFARM_CREDZ_ENABLED"
 
 local function readState()
     local value
 
-    pcall(function()
+    local ok = pcall(function()
         value = TeleportService:GetTeleportSetting(STATE_KEY)
     end)
 
-    if type(value) == "boolean" then
+    if ok and type(value) == "boolean" then
         return value
     end
 
@@ -186,8 +192,9 @@ local function killNPCs(radius)
 
     local count = 0
 
-    for _, humanoid in folder:QueryDescendants("Humanoid") do
-        local npc = humanoid:FindFirstAncestorWhichIsA("Model")
+    for _, descendant in ipairs(folder:GetDescendants()) do
+        local humanoid = descendant:IsA("Humanoid") and descendant or nil
+        local npc = humanoid and humanoid:FindFirstAncestorWhichIsA("Model")
         local npcRoot = npc and npc:FindFirstChild("HumanoidRootPart")
 
         if humanoid.Health > 0
@@ -283,10 +290,13 @@ function teleports:GetEndPrompt()
         return prompt
     end
 
-    local ok, candidates = pcall(customs.QueryDescendants, customs, "ProximityPrompt")
+    local candidates = customs:GetDescendants()
 
-    if ok then
-        for _, candidate in candidates do
+    if candidates then
+        for _, candidate in ipairs(candidates) do
+            if not candidate:IsA("ProximityPrompt") then
+                continue
+            end
             if candidate.ActionText == "Activate" and candidate:FindFirstAncestor("FinalDoor") then
                 return candidate
             end
@@ -855,6 +865,7 @@ local function start()
     end
 
     running = true
+    notify("Ciclo do Auto Farm iniciado.", 3)
 
     task.spawn(function()
         while valid() do
@@ -884,7 +895,7 @@ AutoFarmTab:CreateToggle(
             if queued then
                 notify("Auto Farm Credz ativado.")
             else
-                notify("Ativado. queue_on_teleport não disponível.", 5)
+                notify("Ativado nesta sessão. queue_on_teleport indisponível.", 5)
             end
 
             start()
