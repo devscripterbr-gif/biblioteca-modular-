@@ -271,7 +271,17 @@ local function toEnd()
 
             if cf then
                 local destination = cf * CFrame.new(0, 0, -4)
-                return teleportPoint(destination.Position)
+
+                -- O mapa precisa de alguns segundos para carregar.
+                -- Fazemos o teleporte para o final 3 vezes, com 1 segundo entre eles.
+                for i = 1, 3 do
+                    teleportPoint(destination.Position)
+                    if i < 3 then
+                        task.wait(1)
+                    end
+                end
+
+                return true
             end
         end
     end
