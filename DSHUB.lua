@@ -1,7 +1,5 @@
--- ==========================================================
 -- DS HUB v1.0 | Auto Farm Credz
--- Somente: 🎟️ Auto Farm -> Auto Farm Credz
--- ==========================================================
+-- Somente uma aba e uma função.
 
 local HUB_URL = "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/refs/heads/main/Hub.lua"
 local SCRIPT_URL = "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/refs/heads/main/DSHUB.lua"
@@ -14,38 +12,40 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local env = getgenv and getgenv() or _G
 
-local function getLibrary()
+local function loadHub()
     local ok, source = pcall(function()
         return game:HttpGet(HUB_URL .. "?cb=" .. tostring(os.time()))
     end)
 
     if not ok or type(source) ~= "string" then
-        error("[DS HUB] Hub.lua: " .. tostring(source))
+        error("[DS HUB] Não conseguiu baixar Hub.lua: " .. tostring(source))
     end
 
-    local fn, err = loadstring(source)
+    local fn, compileError = loadstring(source)
 
     if not fn then
-        error("[DS HUB] Hub.lua compilação: " .. tostring(err))
+        error("[DS HUB] Hub.lua não compilou: " .. tostring(compileError))
     end
 
     local ran, library = pcall(fn)
 
     if not ran or type(library) ~= "table" or type(library.Init) ~= "function" then
-        error("[DS HUB] Hub.lua não retornou uma Library válida.")
+        error("[DS HUB] Hub.lua não retornou Library.Init.")
     end
 
     return library
 end
 
-env.DSHUB_AUTOFARM_GENERATION = (tonumber(env.DSHUB_AUTOFARM_GENERATION) or 0) + 1
-local generation = env.DSHUB_AUTOFARM_GENERATION
+-- Uma nova execução substitui o estado antigo.
+env.DSHUB_CREDZ_GENERATION = (tonumber(env.DSHUB_CREDZ_GENERATION) or 0) + 1
+local generation = env.DSHUB_CREDZ_GENERATION
 
-local function current()
-    return env.DSHUB_AUTOFARM_GENERATION == generation
+local function alive()
+    return env.DSHUB_CREDZ_GENERATION == generation
+        and not Window.Unloaded
 end
 
-local Library = getLibrary()
+local Library = loadHub()
 
 local Window = Library.Init({
     Name = "DS Hub",
@@ -53,66 +53,59 @@ local Window = Library.Init({
     ConfigFile = "DSHub_v1_0_Config.json",
 })
 
+env.DSHUB_CURRENT_WINDOW = Window
+
 local AutoFarmTab = Window:CreateTab("🎟️ Auto Farm")
 
-Window:Notify({
-    Title = "DS HUB v1.0",
-    Description = "🎟️ Auto Farm carregado.",
-    Time = 2,
-})
+local ENABLED_KEY = "DSHUB_AUTOFARM_CREDZ_ENABLED"
+local PHASE_KEY = "DSHUB_AUTOFARM_CREDZ_PHASE"
 
-local STATE_KEY = "DSHUB_AUTOFARM_CREDZ_ENABLED"
-
-local function readState()
+local function readSetting(key)
     local value
 
-    local ok = pcall(function()
-        value = TeleportService:GetTeleportSetting(STATE_KEY)
+    pcall(function()
+        value = TeleportService:GetTeleportSetting(key)
     end)
 
-    if ok and type(value) == "boolean" then
+    if value ~= nil then
         return value
     end
 
-    return env[STATE_KEY] == true
+    return env[key]
 end
 
-local function writeState(value)
-    env[STATE_KEY] = value == true
+local function writeSetting(key, value)
+    env[key] = value
 
     pcall(function()
-        TeleportService:SetTeleportSetting(STATE_KEY, value == true)
+        TeleportService:SetTeleportSetting(key, value)
     end)
 end
 
-local function getQueue()
-    if type(queue_on_teleport) == "function" then
-        return queue_on_teleport
-    end
-    if type(queueonteleport) == "function" then
-        return queueonteleport
-    end
-    if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then
-        return syn.queue_on_teleport
-    end
-    if type(fluxus) == "table" and type(fluxus.queue_on_teleport) == "function" then
-        return fluxus.queue_on_teleport
-    end
-end
-
 local function queueResume()
-    local queue = getQueue()
+    local queue
+
+    if type(queue_on_teleport) == "function" then
+        queue = queue_on_teleport
+    elseif type(queueonteleport) == "function" then
+        queue = queueonteleport
+    elseif type(syn) == "table" and type(syn.queue_on_teleport) == "function" then
+        queue = syn.queue_on_teleport
+    elseif type(fluxus) == "table" and type(fluxus.queue_on_teleport) == "function" then
+        queue = fluxus.queue_on_teleport
+    end
+
     if not queue then
         return false
     end
 
     local code = string.format([[
         local url = %q
-        local ok, src = pcall(function()
+        local ok, source = pcall(function()
             return game:HttpGet(url .. "?cb=" .. tostring(os.time()))
         end)
-        if ok and type(src) == "string" then
-            local fn = loadstring(src)
+        if ok and type(source) == "string" then
+            local fn = loadstring(source)
             if fn then
                 pcall(fn)
             end
@@ -123,17 +116,17 @@ local function queueResume()
     return ok
 end
 
-local function flowEvent()
-    local flow = ReplicatedStorage:FindFirstChild("FlowClient")
-    local runner = flow and flow:FindFirstChild("ClientRunner")
-    return runner and runner:FindFirstChild("Event")
+local function getFlowEvent()
+    local flowClient = ReplicatedStorage:FindFirstChild("FlowClient")
+    local clientRunner = flowClient and flowClient:FindFirstChild("ClientRunner")
+    return clientRunner and clientRunner:FindFirstChild("Event")
 end
 
 local function fireFlow(...)
-    local event = flowEvent()
+    local event = getFlowEvent()
 
     if not event then
-        return false, "ClientRunner.Event não encontrado"
+        return false, "FlowClient.ClientRunner.Event não encontrado"
     end
 
     local ok, err = pcall(function()
@@ -143,7 +136,15 @@ local function fireFlow(...)
     return ok, err
 end
 
-local function teleportToPoint(position)
+local function notify(text, duration)
+    Window:Notify({
+        Title = "DS HUB v1.0",
+        Description = text,
+        Time = duration or 4,
+    })
+end
+
+local function teleportCharacter(position)
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -159,6 +160,7 @@ local function teleportToPoint(position)
     local ok = pcall(function()
         if humanoid.SeatPart then
             humanoid.Sit = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         end
 
         character:PivotTo(CFrame.new(position))
@@ -192,29 +194,34 @@ local function killNPCs(radius)
 
     local count = 0
 
-    for _, descendant in ipairs(folder:GetDescendants()) do
-        local humanoid = descendant:IsA("Humanoid") and descendant or nil
-        local npc = humanoid and humanoid:FindFirstAncestorWhichIsA("Model")
-        local npcRoot = npc and npc:FindFirstChild("HumanoidRootPart")
+    for _, object in ipairs(folder:GetDescendants()) do
+        if object:IsA("Humanoid") then
+            local npc = object:FindFirstAncestorWhichIsA("Model")
+            local npcRoot = npc and npc:FindFirstChild("HumanoidRootPart")
 
-        if humanoid.Health > 0
-            and npcRoot
-            and (npcRoot.Position - root.Position).Magnitude <= radius
-        then
-            local hit = pcall(
-                flow.NPCs.Damage,
-                humanoid,
-                humanoid.Health + 1
-            )
+            if object.Health > 0
+                and npcRoot
+                and (npcRoot.Position - root.Position).Magnitude <= radius
+            then
+                local hit = pcall(
+                    flow.NPCs.Damage,
+                    object,
+                    object.Health + 1
+                )
 
-            if hit then
-                count += 1
+                if hit then
+                    count = count + 1
+                end
             end
         end
     end
 
     return count
 end
+
+-- ==========================================================
+-- End-game teleport chain, based on the old RUNAWAYS helpers.
+-- ==========================================================
 
 local teleports = {}
 
@@ -224,50 +231,59 @@ local function stream(position)
     end)
 end
 
-local function notify(text, duration)
-    Window:Notify({
-        Title = "DS HUB v1.0",
-        Description = text,
-        Time = duration or 4,
-    })
-end
+function teleports:GetEndZ()
+    local flowModule = ReplicatedStorage:FindFirstChild("FlowClient")
+    local gui = flowModule and flowModule:FindFirstChild("Gui")
+    local distanceModule = gui and gui:FindFirstChild("DistanceToBorderClient")
 
+    if distanceModule then
+        local ok, module = pcall(require, distanceModule)
 
-function teleports:GetRoadNear(z)
-    local map = workspace:FindFirstChild("Map")
+        if ok and type(module) == "table" then
+            local callback = module.SetEndPos_event or module.SetEndPos
 
-    if not map then
-        return
-    end
+            if type(callback) == "function"
+                and debug
+                and type(debug.getupvalues) == "function"
+            then
+                local got, upvalues = pcall(debug.getupvalues, callback)
 
-    local best
-    local bestDistance = math.huge
-    local bestArea = 0
-
-    for _, part in map:GetDescendants() do
-        local name = part.Name:lower()
-        local parentName = part.Parent and part.Parent.Name:lower()
-
-        if part:IsA("BasePart")
-            and (name == "road" or name == "sideroad" or parentName == "road")
-            and not name:find("pathfinding", 1, true)
-            and part.CanCollide
-            and part.Transparency < 0.95
-        then
-            local distance = math.max(math.abs(part.Position.Z - z) - math.max(part.Size.X, part.Size.Z) * 0.5, 0)
-            local area = part.Size.X * part.Size.Z
-
-            if distance < bestDistance or distance == bestDistance and area > bestArea then
-                best = part
-                bestDistance = distance
-                bestArea = area
+                if got and type(upvalues) == "table" then
+                    for _, value in pairs(upvalues) do
+                        if type(value) == "number" and math.abs(value) > 1000 then
+                            return value
+                        end
+                    end
+                end
             end
         end
     end
 
-    if bestDistance <= 2000 then
-        return best
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+
+    if playerGui then
+        for _, object in ipairs(playerGui:GetDescendants()) do
+            if object:IsA("TextLabel")
+                and string.find(object.Text, "Mexico", 1, true)
+            then
+                local currentObject = object.Parent
+
+                while currentObject and currentObject ~= playerGui do
+                    local value = tonumber(
+                        currentObject.Name:match("^Border_(-?[%d%.]+)$")
+                    )
+
+                    if value then
+                        return value
+                    end
+
+                    currentObject = currentObject.Parent
+                end
+            end
+        end
     end
+
+    return nil
 end
 
 function teleports:GetEndPrompt()
@@ -276,7 +292,7 @@ function teleports:GetEndPrompt()
     local customs = buildings and buildings:FindFirstChild("CustomsFinal")
 
     if not customs then
-        return
+        return nil
     end
 
     local customsBuilding = customs:FindFirstChild("CustomsBuilding")
@@ -284,43 +300,51 @@ function teleports:GetEndPrompt()
     local command = finalDoor and finalDoor:FindFirstChild("Command")
     local commandButton = command and command:FindFirstChild("CommandButton")
     local holder = commandButton and commandButton:FindFirstChild("Prompt")
-    local prompt = holder and (holder:IsA("ProximityPrompt") and holder or holder:FindFirstChildOfClass("ProximityPrompt"))
 
-    if prompt then
-        return prompt
-    end
+    if holder then
+        if holder:IsA("ProximityPrompt") then
+            return holder
+        end
 
-    local candidates = customs:GetDescendants()
-
-    if candidates then
-        for _, candidate in ipairs(candidates) do
-            if not candidate:IsA("ProximityPrompt") then
-                continue
-            end
-            if candidate.ActionText == "Activate" and candidate:FindFirstAncestor("FinalDoor") then
-                return candidate
-            end
+        local direct = holder:FindFirstChildOfClass("ProximityPrompt")
+        if direct then
+            return direct
         end
     end
+
+    for _, candidate in ipairs(customs:GetDescendants()) do
+        if candidate:IsA("ProximityPrompt")
+            and candidate.ActionText == "Activate"
+            and candidate:FindFirstAncestor("FinalDoor")
+        then
+            return candidate
+        end
+    end
+
+    return nil
 end
 
 function teleports:GetEndAnchor(endZ, direction)
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     local source = root and root.Position or Vector3.new(500, 2000, endZ)
+
     local map = workspace:FindFirstChild("Map")
     local buildings = map and map:FindFirstChild("Buildings")
+
     local best = source
     local bestDistance = math.huge
 
     if buildings then
-        for _, building in buildings:GetChildren() do
+        for _, building in ipairs(buildings:GetChildren()) do
             if building:IsA("Model") then
                 local ok, pivot = pcall(building.GetPivot, building)
 
                 if ok then
                     if building.Name == "CustomsFinal" then
-                        return pivot:PointToWorldSpace(Vector3.new(-44.4001, 4.65, -16.5))
+                        return pivot:PointToWorldSpace(
+                            Vector3.new(-44.4001, 4.65, -16.5)
+                        )
                     end
 
                     local distance = math.abs(endZ - pivot.Position.Z)
@@ -335,7 +359,11 @@ function teleports:GetEndAnchor(endZ, direction)
         end
     end
 
-    return Vector3.new(best.X, best.Y + 30, endZ - direction * 35)
+    return Vector3.new(
+        best.X,
+        best.Y + 30,
+        endZ - direction * 35
+    )
 end
 
 function teleports:GetEndPromptDestination(prompt, direction)
@@ -349,7 +377,7 @@ function teleports:GetEndPromptDestination(prompt, direction)
     end
 
     if not holderCFrame then
-        return
+        return nil
     end
 
     local outward = holderCFrame.LookVector
@@ -363,10 +391,11 @@ function teleports:GetEndPromptDestination(prompt, direction)
     end
 
     local position = holderCFrame.Position + outward * 4
-    local params = RaycastParams.new()
 
+    local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = player.Character and { player.Character } or {}
+    params.FilterDescendantsInstances =
+        player.Character and {player.Character} or {}
 
     local result = workspace:Raycast(
         position + Vector3.yAxis * 20,
@@ -375,62 +404,25 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 
     if result then
-        position = Vector3.new(position.X, result.Position.Y + 3.25, position.Z)
+        position = Vector3.new(
+            position.X,
+            result.Position.Y + 3.25,
+            position.Z
+        )
     end
 
     return CFrame.lookAt(
         position,
-        Vector3.new(holderCFrame.Position.X, position.Y, holderCFrame.Position.Z),
+        Vector3.new(
+            holderCFrame.Position.X,
+            position.Y,
+            holderCFrame.Position.Z
+        ),
         Vector3.yAxis
     )
 end
 
-function teleports:ParkEndVehicle(vehicle, endZ, direction)
-    local chassis = getVehicleChassis(vehicle)
-
-    if not chassis or not vehicle.Parent then
-        return
-    end
-
-    local road = self:GetRoadNear(endZ)
-    local position
-
-    if road then
-        position = Vector3.new(
-            road.Position.X,
-            road.Position.Y + road.Size.Y * 0.5 + 4.5,
-            endZ - direction * 28
-        )
-    else
-        local map = workspace:FindFirstChild("Map")
-        local buildings = map and map:FindFirstChild("Buildings")
-        local customs = buildings and buildings:FindFirstChild("CustomsFinal")
-        local ok
-        local pivot
-
-        if customs then
-            ok, pivot = pcall(customs.GetPivot, customs)
-        end
-
-        if ok then
-            position = Vector3.new(pivot.Position.X, pivot.Position.Y + 5, endZ - direction * 28)
-        end
-    end
-
-    if not position then
-        return
-    end
-
-    local look = Vector3.new(chassis.CFrame.LookVector.X, 0, chassis.CFrame.LookVector.Z)
-
-    if look.Magnitude < 0.1 then
-        look = Vector3.new(0, 0, direction)
-    end
-
-    self:Move(CFrame.lookAt(position, position + look.Unit, Vector3.yAxis), vehicle, false)
-end
-
-function teleports:Move(destination, subject, saveLast)
+function teleports:Move(destination)
     if typeof(destination) ~= "CFrame" then
         return false
     end
@@ -440,324 +432,160 @@ function teleports:Move(destination, subject, saveLast)
     local root = character and character:FindFirstChild("HumanoidRootPart")
 
     if not character or not humanoid or not root or humanoid.Health <= 0 then
-        notify("Character is unavailable.")
         return false
-    end
-
-    subject = subject or character
-
-    local mover = subject == character and root or getVehicleChassis(subject)
-
-    if not mover or not subject.Parent then
-        notify("Teleport target is unavailable.")
-        return false
-    end
-
-    local oldLast = self.LastPosition
-
-    if saveLast ~= false then
-        self.LastPosition = root.CFrame
     end
 
     local camera = workspace.CurrentCamera
-    local cameraCFrame = camera and camera.CFrame
-    local cameraSubject = camera and camera.CameraSubject
-    local cameraType = camera and camera.CameraType
+    local oldType = camera and camera.CameraType
+    local oldSubject = camera and camera.CameraSubject
+    local oldCFrame = camera and camera.CFrame
 
     if camera then
         camera.CameraType = Enum.CameraType.Scriptable
-        camera.CFrame = cameraCFrame
+        camera.CFrame = oldCFrame
     end
 
-    local ok, message = pcall(function()
-        if subject == character and humanoid.SeatPart then
+    local ok = pcall(function()
+        if humanoid.SeatPart then
             humanoid.Sit = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             RunService.Heartbeat:Wait()
         end
 
-        subject:PivotTo(destination * mover.CFrame:Inverse() * subject:GetPivot())
-        mover.AssemblyLinearVelocity = Vector3.zero
-        mover.AssemblyAngularVelocity = Vector3.zero
+        root.CFrame = destination
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
         RunService.Heartbeat:Wait()
     end)
 
     if camera and camera.Parent then
-        camera.CameraSubject = cameraSubject
-        camera.CameraType = cameraType
-        camera.CFrame = cameraCFrame
+        camera.CameraSubject = oldSubject
+        camera.CameraType = oldType
+        camera.CFrame = oldCFrame
     end
 
-    if not ok then
-        self.LastPosition = oldLast
-        notify("Teleport failed: " .. tostring(message))
-        return false
-    end
-
-    return true
-end
-
-function teleports:GetEndZ()
-    local flowModule = ReplicatedStorage:FindFirstChild("FlowClient")
-    local gui = flowModule and flowModule:FindFirstChild("Gui")
-    local distanceModule = gui and gui:FindFirstChild("DistanceToBorderClient")
-
-    if distanceModule then
-        local ok, module = pcall(require, distanceModule)
-
-        if ok and type(module) == "table" then
-            local callback = module.SetEndPos_event or module.SetEndPos
-
-            if type(callback) == "function" and debug and type(debug.getupvalues) == "function" then
-                local read, upvalues = pcall(debug.getupvalues, callback)
-
-                if read and type(upvalues) == "table" then
-                    if type(upvalues[1]) == "number" then
-                        return upvalues[1]
-                    end
-
-                    for _, value in upvalues do
-                        if type(value) == "number" and math.abs(value) > 1000 then
-                            return value
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    local playerGui = player:FindFirstChildOfClass("PlayerGui")
-
-    if playerGui then
-        for _, label in playerGui:GetDescendants() do
-            if label:IsA("TextLabel") and label.Text:find("Mexico", 1, true) then
-                local current = label.Parent
-
-                while current and current ~= playerGui do
-                    local value = tonumber(current.Name:match("^Border_(-?[%d%.]+)$"))
-
-                    if value then
-                        return value
-                    end
-
-                    current = current.Parent
-                end
-            end
-        end
-    end
-end
-
-function teleports:GetStartCFrame()
-    local spawn = workspace:FindFirstChildOfClass("SpawnLocation")
-
-    if not spawn or not spawn.Enabled then
-        return
-    end
-
-    local excludes = { spawn }
-
-    if player.Character then
-        excludes[#excludes + 1] = player.Character
-    end
-
-    local parameters = RaycastParams.new()
-
-    parameters.FilterType = Enum.RaycastFilterType.Exclude
-    parameters.FilterDescendantsInstances = excludes
-    parameters.RespectCanCollide = true
-
-    local result = workspace:Raycast(spawn.Position + Vector3.yAxis * 6, -Vector3.yAxis * 20, parameters)
-    local y = result and result.Position.Y + 3.5 or spawn.Position.Y + 3
-
-    return CFrame.new(spawn.Position.X, y, spawn.Position.Z) * spawn.CFrame.Rotation
+    return ok
 end
 
 function teleports:ToEnd()
-    task.spawn(function()
-        local endZ = self:GetEndZ()
-        local character = player.Character
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local vehicle = getCurrentVehicle()
-        local mover = vehicle and getVehicleChassis(vehicle) or root
+    local endZ = self:GetEndZ()
 
-        if not endZ then
-            notify("End position is unavailable.")
-            return
+    if not endZ then
+        return false, "End position unavailable"
+    end
+
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if not character or not humanoid or not root or humanoid.Health <= 0 then
+        return false, "Character unavailable"
+    end
+
+    local start = workspace:FindFirstChildOfClass("SpawnLocation")
+    local direction = (
+        not start or endZ >= start.Position.Z
+    ) and 1 or -1
+
+    local prompt = self:GetEndPrompt()
+
+    if prompt then
+        local destination = self:GetEndPromptDestination(prompt, direction)
+
+        if destination and self:Move(destination) then
+            return true
         end
+    end
 
-        if not humanoid or not mover or humanoid.Health <= 0 then
-            notify("Character is unavailable.")
-            return
+    local anchor = self:GetEndAnchor(endZ, direction)
+    stream(anchor)
+
+    prompt = self:GetEndPrompt()
+
+    if prompt then
+        local destination = self:GetEndPromptDestination(prompt, direction)
+
+        if destination and self:Move(destination) then
+            return true
         end
+    end
 
-        local start = self:GetStartCFrame()
-        local direction = (not start or endZ >= start.Position.Z) and 1 or -1
-        local prompt = self:GetEndPrompt()
+    local ok = self:Move(
+        CFrame.lookAt(
+            anchor,
+            anchor + Vector3.new(0, 0, direction),
+            Vector3.yAxis
+        )
+    )
 
-        if prompt then
-            local destination = self:GetEndPromptDestination(prompt, direction)
+    if not ok then
+        return false, "Fallback teleport failed"
+    end
 
-            if destination then
-                if vehicle then
-                    self.LastPosition = root.CFrame
-                    self:ParkEndVehicle(vehicle, endZ, direction)
-                    self:Move(destination, nil, false)
-                else
-                    self:Move(destination)
-                end
+    local expires = os.clock() + 12
 
-                return
-            end
-        end
-
-        local position = self:GetEndAnchor(endZ, direction)
-
-        stream(position)
+    while os.clock() < expires do
         prompt = self:GetEndPrompt()
 
         if prompt then
             local destination = self:GetEndPromptDestination(prompt, direction)
 
-            if destination then
-                if vehicle then
-                    self.LastPosition = root.CFrame
-                    self:ParkEndVehicle(vehicle, endZ, direction)
-                    self:Move(destination, nil, false)
-                else
-                    self:Move(destination)
-                end
-
-                return
+            if destination and self:Move(destination) then
+                return true
             end
         end
 
-        local road = self:GetRoadNear(endZ)
+        task.wait(0.2)
+    end
 
-        if road then
-            position = Vector3.new(
-                road.Position.X,
-                road.Position.Y + road.Size.Y * 0.5 + 8,
-                endZ - direction * 35
-            )
-        end
+    return false, "End gate prompt unavailable"
+end
 
-        local look = vehicle and Vector3.new(mover.CFrame.LookVector.X, 0, mover.CFrame.LookVector.Z)
-            or Vector3.new(0, 0, direction)
+-- ==========================================================
+-- Credz state machine.
+-- ==========================================================
 
-        if look.Magnitude < 0.1 then
-            look = Vector3.new(0, 0, direction)
-        end
+local savedEnabled = readSetting(ENABLED_KEY)
+local enabled = type(savedEnabled) == "boolean" and savedEnabled or false
+local running = false
 
-        if not self:Move(CFrame.lookAt(position, position + look.Unit, Vector3.yAxis), vehicle or character) then
+local function current()
+    return alive() and enabled and not Window.Unloaded
+end
+
+local function waitUntil(seconds)
+    local deadline = os.clock() + seconds
+
+    while current() and os.clock() < deadline do
+        task.wait(0.1)
+    end
+
+    return current()
+end
+
+local function waitForGameOrLobbyChange(seconds)
+    local deadline = os.clock() + seconds
+
+    while current() and os.clock() < deadline do
+        local mapNow = workspace:FindFirstChild("Map")
+        local lobbiesNow = workspace:FindFirstChild("Lobbies")
+
+        if mapNow or not lobbiesNow then
             return
         end
 
-        mover = vehicle and getVehicleChassis(vehicle) or character:FindFirstChild("HumanoidRootPart")
-
-        local anchored = mover and mover.Anchored
-
-        if mover then
-            mover.Anchored = true
-        end
-
-        local waited, found = pcall(function()
-            local expires = os.clock() + 12
-            local loaded
-            local refined = false
-
-            repeat
-                loaded = self:GetEndPrompt()
-
-                if not loaded and not refined then
-                    local map = workspace:FindFirstChild("Map")
-                    local buildings = map and map:FindFirstChild("Buildings")
-                    local customs = buildings and buildings:FindFirstChild("CustomsFinal")
-                    local ok
-                    local pivot
-
-                    if customs then
-                        ok, pivot = pcall(customs.GetPivot, customs)
-                    end
-
-                    if ok then
-                        refined = true
-                        stream(pivot.Position)
-                        loaded = self:GetEndPrompt()
-                    end
-                end
-
-                if not loaded then
-                    task.wait(0.2)
-                end
-            until loaded or not character.Parent or os.clock() >= expires
-
-            return loaded
-        end)
-
-        if mover and mover.Parent then
-            mover.Anchored = anchored
-        end
-
-        if waited then
-            prompt = found
-        end
-
-        if prompt then
-            local destination = self:GetEndPromptDestination(prompt, direction)
-
-            if destination then
-                if vehicle then
-                    self:ParkEndVehicle(vehicle, endZ, direction)
-                end
-
-                self:Move(destination, nil, false)
-                return
-            end
-        end
-
-        road = self:GetRoadNear(endZ)
-
-        if road then
-            if vehicle then
-                self:ParkEndVehicle(vehicle, endZ, direction)
-            else
-                position = Vector3.new(
-                    road.Position.X,
-                    road.Position.Y + road.Size.Y * 0.5 + 8,
-                    endZ - direction * 20
-                )
-                self:Move(CFrame.lookAt(position, position + Vector3.new(0, 0, direction), Vector3.yAxis), nil, false)
-            end
-        end
-
-        notify("End gate button is unavailable.")
-    end)
-end
-
-
-local enabled = readState()
-local running = false
-
-local function valid()
-    return current() and enabled and not Window.Unloaded
-end
-
-local function waitValid(seconds)
-    local expires = os.clock() + seconds
-
-    while valid() and os.clock() < expires do
-        task.wait(0.15)
+        task.wait(0.25)
     end
-
-    return valid()
 end
 
 local function lobbyPhase()
-    if not workspace:FindFirstChild("Lobbies") then
+    local lobbies = workspace:FindFirstChild("Lobbies")
+
+    if not lobbies then
         return false
     end
 
+    writeSetting(PHASE_KEY, "LobbyPlay")
     notify("Lobbies encontrado.")
 
     queueResume()
@@ -769,13 +597,15 @@ local function lobbyPhase()
 
     if not ok then
         notify("LobbyServer/play: " .. tostring(err), 6)
+        task.wait(2)
         return true
     end
 
-    if not waitValid(3) then
+    if not waitUntil(3) then
         return true
     end
 
+    writeSetting(PHASE_KEY, "LobbyCreate")
     queueResume()
 
     ok, err = fireFlow(
@@ -790,9 +620,15 @@ local function lobbyPhase()
 
     if not ok then
         notify("LobbyServer/create: " .. tostring(err), 6)
-    else
-        notify("Lobby criada.")
+        task.wait(2)
+        return true
     end
+
+    notify("Lobby criada. Aguardando entrada no jogo.")
+
+    -- Não repete play/create enquanto a mesma pasta Lobbies ainda existe.
+    -- Espera a transição para Map ou a saída de Lobbies.
+    waitForGameOrLobbyChange(90)
 
     return true
 end
@@ -804,56 +640,76 @@ local function gamePhase()
         return false
     end
 
-    notify("Map encontrado. Indo para o fim do jogo.")
+    writeSetting(PHASE_KEY, "GameEnd")
+    notify("Map encontrado. Indo para o fim.")
 
-    local ok = pcall(function()
-        teleports:ToEnd()
-    end)
+    local ok, err = teleports:ToEnd()
 
     if not ok then
-        notify("Falha no teleporte para o fim.", 6)
+        notify("Teleporte para o fim: " .. tostring(err), 6)
         return true
     end
 
-    if not waitValid(1.5) then
+    if not waitUntil(0.5) then
         return true
     end
 
-    if not teleportToPoint(Vector3.new(463, 1797, 83540)) then
-        notify("Falha ao chegar na posição Credz.", 6)
+    writeSetting(PHASE_KEY, "Farm")
+
+    if not teleportCharacter(
+        Vector3.new(463, 1797, 83540)
+    ) then
+        notify("Falha ao chegar no ponto de farm.", 6)
         return true
     end
 
-    notify("Farm de NPCs: 300 studs / 2 minutos.")
+    notify("Farmando NPCs em 300 studs por 2 minutos.")
 
-    local finish = os.clock() + 120
+    local deadline = os.clock() + 120
 
-    while valid() and os.clock() < finish do
+    while current() and os.clock() < deadline do
         killNPCs(300)
         task.wait(0.15)
     end
 
-    if not valid() then
+    if not current() then
         return true
     end
 
-    teleportToPoint(Vector3.new(1060, 2287, 83726))
+    writeSetting(PHASE_KEY, "Replay")
 
-    if not waitValid(3) then
+    teleportCharacter(
+        Vector3.new(1060, 2287, 83726)
+    )
+
+    if not waitUntil(3) then
         return true
     end
 
     queueResume()
 
-    local replayOk, replayErr = fireFlow(
+    local replayOk, replayError = fireFlow(
         "GameManager",
         "Replay"
     )
 
     if not replayOk then
-        notify("GameManager/Replay: " .. tostring(replayErr), 6)
+        notify("GameManager/Replay: " .. tostring(replayError), 6)
     else
         notify("Replay enviado.")
+    end
+
+    local deadline = os.clock() + 90
+
+    while current() and os.clock() < deadline do
+        local lobbiesNow = workspace:FindFirstChild("Lobbies")
+        local mapNow = workspace:FindFirstChild("Map")
+
+        if lobbiesNow or not mapNow then
+            break
+        end
+
+        task.wait(0.25)
     end
 
     return true
@@ -865,10 +721,11 @@ local function start()
     end
 
     running = true
-    notify("Ciclo do Auto Farm iniciado.", 3)
 
     task.spawn(function()
-        while valid() do
+        notify("Auto Farm Credz iniciado.", 3)
+
+        while current() do
             if lobbyPhase() then
                 task.wait(0.5)
             elseif gamePhase() then
@@ -887,33 +744,30 @@ AutoFarmTab:CreateToggle(
     enabled,
     function(value)
         enabled = value
-        writeState(value)
+        writeSetting(ENABLED_KEY, value)
 
         if value then
-            local queued = queueResume()
-
-            if queued then
-                notify("Auto Farm Credz ativado.")
-            else
-                notify("Ativado nesta sessão. queue_on_teleport indisponível.", 5)
-            end
-
+            queueResume()
             start()
+            notify("Auto Farm Credz ativado.", 3)
         else
-            notify("Auto Farm Credz desativado.")
+            writeSetting(PHASE_KEY, "Stopped")
+            notify("Auto Farm Credz desativado.", 3)
         end
     end
 )
 
+Window:Notify({
+    Title = "DS HUB v1.0",
+    Description = enabled
+        and "🎟️ Auto Farm Credz restaurado."
+        or "🎟️ Auto Farm Credz pronto.",
+    Time = 3,
+})
+
 if enabled then
     task.defer(start)
 end
-
-Window:Notify({
-    Title = "DS HUB v1.0",
-    Description = "🎟️ Auto Farm Credz pronto.",
-    Time = 3,
-})
 
 env.DSHUB_AUTOFARM_LOADED = true
 
