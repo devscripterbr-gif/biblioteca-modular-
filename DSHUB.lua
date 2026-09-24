@@ -117,6 +117,17 @@ end
 
 local enabled = readSetting(ENABLED_KEY) == true
 local running = false
+
+-- Quando o toggle continua ativo após Replay/transição de servidor,
+-- o novo servidor ganha alguns segundos para terminar de carregar.
+local WAIT_AFTER_SERVER_CHANGE = 5
+local waitForNewServer = enabled
+    and readSetting(PHASE_KEY) == "WaitingForServerTransition"
+
+if waitForNewServer then
+    writeSetting(PHASE_KEY, "ServerLoading")
+    task.wait(WAIT_AFTER_SERVER_CHANGE)
+end
 local generation = (tonumber(env.DSHUB_CREDZ_GENERATION) or 0) + 1
 env.DSHUB_CREDZ_GENERATION = generation
 
@@ -819,34 +830,134 @@ local function getDoorRCFrame()
     return nil
 end
 
-local function fireFinalDoorPrompt()
-    local prompt = getExactFinalPrompt()
+local function waitForExactFinalPrompt(timeout)
+    local deadline = os.clock() + (timeout or 12)
 
-    if not prompt or not prompt.Parent then
-        return false
+    while current() and os.clock() < deadline do
+        local prompt = getExactFinalPrompt()
+
+        if prompt and prompt.Parent then
+            return prompt
+        end
+
+        task.wait(0.20)
     end
 
-    if type(fireproximityprompt) == "function" then
-        local ok = pcall(function()
-            fireproximityprompt(prompt)
-        end)
-        if ok then
-            return true
+    return nil
+end
+
+local function getPromptActivationCFrame(prompt)
+    if not prompt or not prompt.Parent then
+        return nil
+    end
+
+    local holder = prompt.Parent
+    local cf
+
+    if holder:IsA("Attachment") then
+        cf = holder.WorldCFrame
+    elseif holder:IsA("BasePart") then
+        cf = holder.CFrame
+    else
+        local model = prompt:FindFirstAncestorOfClass("Model")
+        if model then
+            local ok, pivot = pcall(model.GetPivot, model)
+            if ok and pivot then
+                cf = pivot
+            end
         end
     end
 
-    -- Fallback for executors that do not expose fireproximityprompt.
-    local ok = pcall(function()
-        local oldDuration = prompt.HoldDuration
-        prompt.HoldDuration = 0
-        prompt:InputHoldBegin()
-        task.wait(0.1)
-        prompt:InputHoldEnd()
-        prompt.HoldDuration = oldDuration
-    end)
+    if not cf then
+        return nil
+    end
 
-    return ok
+    -- Fica 2 studs na frente do prompt, dentro da distância normal de interação.
+    local position = cf.Position - cf.LookVector * 2
+    return CFrame.lookAt(
+        position,
+        cf.Position,
+        Vector3.yAxis
+    )
 end
+
+local function fireFinalDoorPrompt()
+    local prompt = waitForExactFinalPrompt(12)
+    if not prompt then
+        return false
+    end
+
+    local timerBefore = getTimerLabel()
+    local beforeText = timerBefore and tostring(timerBefore.Text) or ""
+    local beforeValue = timerBefore and parseTimerText(timerBefore.Text) or nil
+
+    -- Reposiciona no prompt exato para evitar falha de distância.
+    local activationCFrame = getPromptActivationCFrame(prompt)
+    if activationCFrame then
+        teleportCFrame(activationCFrame)
+    end
+
+    local deadline = os.clock() + 6
+
+    while current() and os.clock() < deadline do
+        prompt = getExactFinalPrompt()
+
+        if prompt and prompt.Parent then
+            if type(fireproximityprompt) == "function" then
+                -- Primeira tentativa: assinatura simples.
+                pcall(function()
+                    fireproximityprompt(prompt)
+                end)
+
+                -- Segunda tentativa: assinaturas comuns de executores.
+                pcall(function()
+                    fireproximityprompt(prompt, 1, true)
+                end)
+
+                -- Terceira tentativa: repetir o disparo uma vez.
+                pcall(function()
+                    fireproximityprompt(prompt)
+                end)
+            end
+
+            -- Fallback nativo do ProximityPrompt.
+            pcall(function()
+                local oldDuration = prompt.HoldDuration
+                prompt.HoldDuration = 0
+                prompt:InputHoldBegin()
+                task.wait(0.12)
+                prompt:InputHoldEnd()
+                prompt.HoldDuration = oldDuration
+            end)
+        end
+
+        task.wait(0.25)
+
+        -- Verifica se o temporizador realmente foi ativado.
+        local timerAfter = getTimerLabel()
+        if timerAfter then
+            local afterText = tostring(timerAfter.Text)
+            local afterValue = parseTimerText(afterText)
+
+            if afterValue and afterValue > 0 then
+                return true
+            end
+
+            if afterText ~= "" and afterText ~= beforeText then
+                return true
+            end
+
+            if beforeValue and afterValue and afterValue ~= beforeValue then
+                return true
+            end
+        end
+
+        task.wait(0.25)
+    end
+
+    return false
+end
+
 
 local function getTimerLabel()
     local finalDoor = getFinalDoor()
@@ -1111,7 +1222,8 @@ local function lobbyPhase()
         return true
     end
 
-    if not waitSeconds(3) then
+    -- Depois de "play", espera exatamente 2 segundos antes de criar a sala.
+    if not waitSeconds(2) then
         return true
     end
 
@@ -1176,7 +1288,11 @@ local function gamePhase()
 
     -- 3) Dispara especificamente o ProximityPrompt de
     -- FinalDoor > Command > CommandButton > Prompt.
-    fireFinalDoorPrompt()
+    -- Só continua quando o "Time" do mapa realmente começar.
+    if not fireFinalDoorPrompt() then
+        task.wait(1)
+        return true
+    end
 
     -- 4) Não usa um timer interno de 2 minutos.
     -- O cronômetro oficial é o TextLabel "Time" do mapa.
