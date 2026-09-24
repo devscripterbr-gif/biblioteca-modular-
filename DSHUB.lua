@@ -133,27 +133,72 @@ end
 -- ----------------------------------------------------------
 local frozenCharacter = nil
 local frozenHumanoid = nil
+local frozenRoot = nil
 local frozenValues = nil
+local frozenControls = nil
+
+local function getPlayerControls()
+    local playerScripts = player:FindFirstChild("PlayerScripts")
+    local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
+
+    if not playerModule then
+        return nil
+    end
+
+    local ok, module = pcall(require, playerModule)
+    if not ok or not module or type(module.GetControls) ~= "function" then
+        return nil
+    end
+
+    local okControls, controls = pcall(function()
+        return module:GetControls()
+    end)
+
+    if okControls and controls then
+        return controls
+    end
+end
 
 local function freezePlayer()
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not character or not humanoid then
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if not character or not humanoid or not root then
         return false
     end
 
-    if frozenCharacter == character and frozenHumanoid == humanoid then
+    if frozenCharacter == character
+        and frozenHumanoid == humanoid
+        and frozenRoot == root
+    then
         humanoid.WalkSpeed = 0
         humanoid.AutoRotate = false
-        pcall(function() humanoid.UseJumpPower = true end)
-        pcall(function() humanoid.JumpPower = 0 end)
-        pcall(function() humanoid.JumpHeight = 0 end)
-        pcall(function() humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false) end)
+
+        pcall(function()
+            humanoid.UseJumpPower = true
+            humanoid.JumpPower = 0
+            humanoid.JumpHeight = 0
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+        end)
+
+        root.Anchored = true
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+
+        if frozenControls then
+            pcall(function()
+                frozenControls:Disable()
+            end)
+        end
+
         return true
     end
 
     frozenCharacter = character
     frozenHumanoid = humanoid
+    frozenRoot = root
+
     frozenValues = {
         WalkSpeed = humanoid.WalkSpeed,
         AutoRotate = humanoid.AutoRotate,
@@ -161,14 +206,30 @@ local function freezePlayer()
         JumpPower = humanoid.JumpPower,
         JumpHeight = humanoid.JumpHeight,
         JumpingEnabled = humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping),
+        Anchored = root.Anchored,
     }
 
     humanoid.WalkSpeed = 0
     humanoid.AutoRotate = false
-    pcall(function() humanoid.UseJumpPower = true end)
-    pcall(function() humanoid.JumpPower = 0 end)
-    pcall(function() humanoid.JumpHeight = 0 end)
-    pcall(function() humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false) end)
+
+    pcall(function()
+        humanoid.UseJumpPower = true
+        humanoid.JumpPower = 0
+        humanoid.JumpHeight = 0
+        humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+    end)
+
+    root.Anchored = true
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+
+    frozenControls = getPlayerControls()
+    if frozenControls then
+        pcall(function()
+            -- Desliga apenas os controles de movimento; a câmera continua livre.
+            frozenControls:Disable()
+        end)
+    end
 
     return true
 end
@@ -176,17 +237,37 @@ end
 local function unfreezePlayer()
     if frozenHumanoid and frozenHumanoid.Parent and frozenValues then
         local h = frozenHumanoid
-        pcall(function() h.WalkSpeed = frozenValues.WalkSpeed end)
-        pcall(function() h.AutoRotate = frozenValues.AutoRotate end)
-        pcall(function() h.UseJumpPower = frozenValues.UseJumpPower end)
-        pcall(function() h.JumpPower = frozenValues.JumpPower end)
-        pcall(function() h.JumpHeight = frozenValues.JumpHeight end)
-        pcall(function() h:SetStateEnabled(Enum.HumanoidStateType.Jumping, frozenValues.JumpingEnabled) end)
+        local r = frozenRoot
+
+        pcall(function()
+            h.WalkSpeed = frozenValues.WalkSpeed
+            h.AutoRotate = frozenValues.AutoRotate
+            h.UseJumpPower = frozenValues.UseJumpPower
+            h.JumpPower = frozenValues.JumpPower
+            h.JumpHeight = frozenValues.JumpHeight
+            h:SetStateEnabled(Enum.HumanoidStateType.Jumping, frozenValues.JumpingEnabled)
+        end)
+
+        if r and r.Parent then
+            pcall(function()
+                r.Anchored = frozenValues.Anchored
+                r.AssemblyLinearVelocity = Vector3.zero
+                r.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end
+    end
+
+    if frozenControls then
+        pcall(function()
+            frozenControls:Enable()
+        end)
     end
 
     frozenCharacter = nil
     frozenHumanoid = nil
+    frozenRoot = nil
     frozenValues = nil
+    frozenControls = nil
 end
 
 player.CharacterAdded:Connect(function(character)
@@ -213,12 +294,22 @@ RunService.Heartbeat:Connect(function()
         frozenHumanoid.AutoRotate = false
         frozenHumanoid.JumpPower = 0
         frozenHumanoid.JumpHeight = 0
+        frozenHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
     end)
 
-    local root = frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart")
+    local root = frozenRoot
+        or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
+
     if root then
+        root.Anchored = true
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    if frozenControls then
+        pcall(function()
+            frozenControls:Disable()
+        end)
     end
 end)
 
@@ -663,6 +754,65 @@ local function moveThreeTimes(destination)
     return true
 end
 
+local function fireProximityPromptWithinFive(prompt, direction)
+    if not prompt or not prompt.Parent then
+        return false, "Prompt indisponível"
+    end
+
+    if type(fireproximityprompt) ~= "function" then
+        return false, "fireproximityprompt indisponível"
+    end
+
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return false, "HumanoidRootPart indisponível"
+    end
+
+    local destination = teleports:GetEndPromptDestination(prompt, direction)
+    if not destination then
+        return false, "Destino do prompt indisponível"
+    end
+
+    local promptParent = prompt.Parent
+    local promptPosition
+
+    if promptParent:IsA("Attachment") then
+        promptPosition = promptParent.WorldPosition
+    elseif promptParent:IsA("BasePart") then
+        promptPosition = promptParent.Position
+    end
+
+    if not promptPosition then
+        return false, "Posição do prompt indisponível"
+    end
+
+    -- O destino antigo fica ~4 studs do prompt. Garante explicitamente <= 5 studs.
+    if (root.Position - promptPosition).Magnitude > 5 then
+        if not teleports:Move(destination) then
+            return false, "Reposicionamento do prompt falhou"
+        end
+    end
+
+    local distance = (root.Position - promptPosition).Magnitude
+    if distance > 5 then
+        return false, string.format("Prompt está a %.2f studs", distance)
+    end
+
+    -- Espera curta para a área/prompt estabilizar, sem mover o player.
+    task.wait(0.15)
+
+    if not current() then
+        return false, "Auto Farm parado"
+    end
+
+    local fired = pcall(function()
+        fireproximityprompt(prompt)
+    end)
+
+    return fired, fired and nil or "fireproximityprompt falhou"
+end
+
 function teleports:ToEnd()
     local endZ = self:GetEndZ()
     if not endZ then
@@ -683,7 +833,12 @@ function teleports:ToEnd()
     if prompt then
         local destination = self:GetEndPromptDestination(prompt, direction)
         if destination and moveThreeTimes(destination) then
-            return true
+            -- Ativa o temporizador assim que chegar ao final, com o player
+            -- garantidamente a no máximo 5 studs do ProximityPrompt.
+            local fired, fireError = fireProximityPromptWithinFive(prompt, direction)
+            if fired then
+                return true
+            end
         end
     end
 
@@ -703,7 +858,10 @@ function teleports:ToEnd()
         if prompt then
             local destination = self:GetEndPromptDestination(prompt, direction)
             if destination and moveThreeTimes(destination) then
-                return true
+                local fired = fireProximityPromptWithinFive(prompt, direction)
+                if fired then
+                    return true
+                end
             end
         end
         task.wait(0.2)
