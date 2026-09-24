@@ -754,64 +754,67 @@ local function moveThreeTimes(destination)
     return true
 end
 
-local function fireProximityPromptWithinFive(prompt, direction)
+local function getPromptWorldPosition(prompt)
     if not prompt or not prompt.Parent then
-        return false, "Prompt indisponível"
+        return nil
     end
 
+    local parent = prompt.Parent
+
+    if parent:IsA("Attachment") then
+        return parent.WorldPosition
+    end
+
+    if parent:IsA("BasePart") then
+        return parent.Position
+    end
+
+    local model = prompt:FindFirstAncestorOfClass("Model")
+    if model then
+        local ok, pivot = pcall(model.GetPivot, model)
+        if ok and pivot then
+            return pivot.Position
+        end
+    end
+
+    return nil
+end
+
+local function fireAnyPromptWithinTenStuds()
     if type(fireproximityprompt) ~= "function" then
-        return false, "fireproximityprompt indisponível"
+        return false, 0
     end
 
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root then
-        return false, "HumanoidRootPart indisponível"
+        return false, 0
     end
 
-    local destination = teleports:GetEndPromptDestination(prompt, direction)
-    if not destination then
-        return false, "Destino do prompt indisponível"
-    end
+    local firedCount = 0
 
-    local promptParent = prompt.Parent
-    local promptPosition
+    for _, object in ipairs(workspace:GetDescendants()) do
+        if object:IsA("ProximityPrompt") and object.Enabled then
+            local promptPosition = getPromptWorldPosition(object)
 
-    if promptParent:IsA("Attachment") then
-        promptPosition = promptParent.WorldPosition
-    elseif promptParent:IsA("BasePart") then
-        promptPosition = promptParent.Position
-    end
+            if promptPosition
+                and (root.Position - promptPosition).Magnitude <= 10
+            then
+                local ok = pcall(function()
+                    fireproximityprompt(object)
+                end)
 
-    if not promptPosition then
-        return false, "Posição do prompt indisponível"
-    end
-
-    -- O destino antigo fica ~4 studs do prompt. Garante explicitamente <= 5 studs.
-    if (root.Position - promptPosition).Magnitude > 5 then
-        if not teleports:Move(destination) then
-            return false, "Reposicionamento do prompt falhou"
+                if ok then
+                    firedCount += 1
+                end
+            end
         end
     end
 
-    local distance = (root.Position - promptPosition).Magnitude
-    if distance > 5 then
-        return false, string.format("Prompt está a %.2f studs", distance)
-    end
-
-    -- Espera curta para a área/prompt estabilizar, sem mover o player.
-    task.wait(0.15)
-
-    if not current() then
-        return false, "Auto Farm parado"
-    end
-
-    local fired = pcall(function()
-        fireproximityprompt(prompt)
-    end)
-
-    return fired, fired and nil or "fireproximityprompt falhou"
+    return firedCount > 0, firedCount
 end
+
+
 
 function teleports:ToEnd()
     local endZ = self:GetEndZ()
@@ -833,9 +836,9 @@ function teleports:ToEnd()
     if prompt then
         local destination = self:GetEndPromptDestination(prompt, direction)
         if destination and moveThreeTimes(destination) then
-            -- Ativa o temporizador assim que chegar ao final, com o player
-            -- garantidamente a no máximo 5 studs do ProximityPrompt.
-            local fired, fireError = fireProximityPromptWithinFive(prompt, direction)
+            -- Depois de carregar o final, dispara qualquer ProximityPrompt
+            -- habilitado que esteja a até 10 studs do player.
+            local fired = fireAnyPromptWithinTenStuds()
             if fired then
                 return true
             end
@@ -858,7 +861,7 @@ function teleports:ToEnd()
         if prompt then
             local destination = self:GetEndPromptDestination(prompt, direction)
             if destination and moveThreeTimes(destination) then
-                local fired = fireProximityPromptWithinFive(prompt, direction)
+                local fired = fireAnyPromptWithinTenStuds()
                 if fired then
                     return true
                 end
