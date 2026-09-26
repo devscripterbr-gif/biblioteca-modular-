@@ -626,7 +626,7 @@ local function waitForTimerZero(timeout)
             local remaining = parseTimerText(label.Text)
             
             if remaining ~= nil and remaining <= 2 then
-                print("[DS HUB] Cronómetro em <= 2s! Disparando teleportes no servidor...")
+                print("[DS HUB] Cronómetro em <= 2s! Disparando teleporte no servidor...")
                 return true
             end
         end
@@ -683,32 +683,25 @@ local function teleportCFrame(destination, anchorAfter)
 end
 
 local function runDoorRSideTeleports()
-    local directions = {
-        Vector3.new(0, 0, -10), -- Frente
-        Vector3.new(0, 0, 10),  -- Trás
-        Vector3.new(10, 0, 0),  -- Direita
-        Vector3.new(-10, 0, 0), -- Esquerda
-    }
+    if not current() then return false end
 
-    for idx, offsetDir in ipairs(directions) do
-        if not current() then return false end
+    local base = getDoorRCFrame()
+    if not base then return false end
 
-        local base = getDoorRCFrame()
-        if not base then return false end
+    -- Apenas o primeiro deslocamento (Frente)
+    local offsetDir = Vector3.new(0, 0, -10)
+    local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
+    local targetCFrame = CFrame.new(targetPosition) * base.Rotation
 
-        local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
-        local targetCFrame = CFrame.new(targetPosition) * base.Rotation
+    print("[DS HUB] Teleporte único de vitória no servidor...")
+    
+    -- Move desancorado para registrar no servidor
+    teleportCFrame(targetCFrame, false)
+    task.wait(0.50)
 
-        print("[DS HUB] Teleporte real servidor " .. idx .. "/4...")
-        
-        -- Move desancorado para registrar no servidor
-        teleportCFrame(targetCFrame, false)
-        task.wait(0.50)
-
-        base = getDoorRCFrame() or base
-        teleportCFrame(base, true)
-        task.wait(0.10)
-    end
+    base = getDoorRCFrame() or base
+    teleportCFrame(base, true)
+    task.wait(0.10)
 
     return true
 end
@@ -844,8 +837,8 @@ local function gamePhase()
 
     if not current() then return true end
 
-    -- 6) Executa os 4 teleportes rápidos de servidor
-    writeSetting(PHASE_KEY, "DoorRSideTeleports")
+    -- 6) Executa o teleporte único de vitória
+    writeSetting(PHASE_KEY, "DoorRSideTeleport")
     runDoorRSideTeleports()
 
     if not current() then return true end
