@@ -122,7 +122,7 @@ local afkEnabled = readSetting(AFK_KEY) == true
 local running = false
 
 local setAFKState -- Forward declaration
-local AFKToggleObject = nil -- Referencia para o Toggle do Hub
+local AFKToggleObject = nil -- Referência para o Toggle do Hub
 
 local WAIT_AFTER_SERVER_CHANGE = 5
 local waitForNewServer = enabled
@@ -244,7 +244,6 @@ local function destroyAFKGui()
 end
 
 setAFKState = function(state)
-    -- Só permite ativar se o Auto Farm estiver ligado
     if state and not enabled then
         state = false
     end
@@ -264,7 +263,7 @@ setAFKState = function(state)
     end
 end
 
--- Atualiza o temporizador da tela AFK
+-- Temporizador da tela AFK
 task.spawn(function()
     while true do
         if afkEnabled and enabled and afkTimerText then
@@ -293,9 +292,7 @@ local function getPlayerControls()
     local playerScripts = player:FindFirstChild("PlayerScripts")
     local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
 
-    if not playerModule then
-        return nil
-    end
+    if not playerModule then return nil end
 
     local ok, module = pcall(require, playerModule)
     if not ok or not module or type(module.GetControls) ~= "function" then
@@ -422,7 +419,7 @@ player.CharacterAdded:Connect(function(character)
     end)
 end)
 
--- Heartbeat de estabilização
+-- Heartbeat de estabilização do estado congelado
 RunService.Heartbeat:Connect(function()
     if not enabled or not frozenHumanoid or not frozenHumanoid.Parent then
         return
@@ -493,7 +490,7 @@ local function removeHelicopters()
 end
 
 -- ----------------------------------------------------------
--- Character teleport & Teleports Module
+-- Character teleport & Teleports Module (Com Servidor Sync)
 -- ----------------------------------------------------------
 local teleports = {}
 
@@ -606,7 +603,7 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
--- Teleporte Direto Sincronizado
+-- Teleporte com Sincronização Server-Side Obrigatória
 function teleports:Move(destination, anchorAfter)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
@@ -621,7 +618,10 @@ function teleports:Move(destination, anchorAfter)
     end
 
     local ok = pcall(function()
+        -- 1. Reseta física e libera o controle do servidor
         root.Anchored = false
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
 
         if humanoid.SeatPart then
             humanoid.Sit = false
@@ -629,11 +629,20 @@ function teleports:Move(destination, anchorAfter)
             task.wait(0.05)
         end
 
+        -- Reseta estado da física para forçar re-sincronização de rede
+        humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+
+        -- 2. Teleporta o Modelo + a RootPart diretamente
         character:PivotTo(destination)
         root.CFrame = destination
+
+        -- 3. Pequeno yield para dar tempo do cliente enviar o pacote de rede ao servidor
+        task.wait(0.03)
+
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
+        -- 4. Ancoragem pós-sincronização
         if anchorAfter and root and root.Parent then
             root.Anchored = true
         end
@@ -645,7 +654,7 @@ end
 local function moveThreeTimes(destination)
     for i = 1, 3 do
         if not current() then return false end
-        task.wait(0.4)
+        task.wait(0.3)
         if not current() then return false end
         if not teleports:Move(destination, true) then return false end
     end
@@ -751,10 +760,14 @@ local function waitForTimerZero(timeout)
         local character = player.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
 
-        -- Reforça o congelamento e trava de posição dentro da DoorR
+        -- Reforça a posição sincronizada com validação física
         if root and doorCFrame then
-            root.Anchored = true
-            root.CFrame = doorCFrame
+            if (root.Position - doorCFrame.Position).Magnitude > 5 then
+                teleports:Move(doorCFrame, true)
+            else
+                root.Anchored = true
+                root.CFrame = doorCFrame
+            end
         end
 
         local label = getTimerLabel()
@@ -824,14 +837,13 @@ local function runDoorRSideTeleports()
     local base = getDoorRCFrame()
     if not base then return false end
 
-    -- Apenas 1 único deslocamento para frente
     local offsetDir = Vector3.new(0, 0, -10)
     local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
     local targetCFrame = CFrame.new(targetPosition) * base.Rotation
 
     print("[DS HUB] Teleporte único de vitória no servidor...")
     
-    -- Teleporta uma única vez para a posição final e ancora
+    -- Executa a movimentação sincronizada de vitória
     teleportCFrame(targetCFrame, true)
 
     return true
