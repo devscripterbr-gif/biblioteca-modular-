@@ -554,59 +554,43 @@ local function getDoorRCFrame()
 end
 
 -- ----------------------------------------------------------
--- Gemini Timer Parser & Detector (robusto)
+-- Fast Timer Parser & Detector
 -- ----------------------------------------------------------
-local function cleanTimerText(text)
+local function parseTimerText(text)
     text = tostring(text or "")
-
-    -- Remove tags de RichText e caracteres invisíveis/espaços especiais.
     text = text:gsub("<[^>]->", "")
     text = text:gsub("[%s\194\160\226\128\175]+", " ")
-    text = text:gsub("^%s+", ""):gsub("%s+$", "")
-
-    return text
-end
-
-local function parseTimerText(text)
-    text = cleanTimerText(text)
-    if text == "" then
-        return nil
-    end
-
-    -- Formato principal do jogo: 2m 03s / 00m 02s / etc.
+    
     local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
-    if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
-    end
+    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
 
-    -- Fallback: 2:03
     minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
-    if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
-    end
+    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
 
-    -- Fallback: 03s
-    local onlySeconds = text:match("^(%d+)%s*[sS]$")
-    if onlySeconds then
-        return tonumber(onlySeconds)
-    end
+    local onlySeconds = text:match("(%d+)%s*[sS]")
+    if onlySeconds then return tonumber(onlySeconds) end
 
-    -- Último fallback para um contador que mostre apenas um número.
-    if text:match("^%d+$") then
-        return tonumber(text)
-    end
+    local number = text:match("(%d+)")
+    if number then return tonumber(number) end
 
     return nil
 end
 
-local function findFinalDoorAnywhere()
-    local exact = getFinalDoor()
-    if exact then
-        return exact
+local function getTimerLabel()
+    local finalDoor = getFinalDoor()
+    if not finalDoor then return nil end
+
+    local timerModel = finalDoor:FindFirstChild("Timer")
+    local surfaceGui = timerModel and timerModel:FindFirstChild("SurfaceGui")
+    local timerFrame = surfaceGui and surfaceGui:FindFirstChild("Timer")
+    local timeLabel = timerFrame and timerFrame:FindFirstChild("Time")
+
+    if timeLabel and (timeLabel:IsA("TextLabel") or timeLabel:IsA("TextButton")) then
+        return timeLabel
     end
 
-    for _, object in ipairs(workspace:GetDescendants()) do
-        if object.Name == "FinalDoor" then
+    for _, object in ipairs(finalDoor:GetDescendants()) do
+        if object.Name == "Time" and (object:IsA("TextLabel") or object:IsA("TextButton")) then
             return object
         end
     end
@@ -614,70 +598,34 @@ local function findFinalDoorAnywhere()
     return nil
 end
 
--- Replica a lógica do script original/Gemini: procura TODOS os TextLabels
--- dentro da FinalDoor e usa o primeiro que realmente contém um tempo válido.
--- Isso evita depender exclusivamente de FinalDoor > Timer > SurfaceGui > Timer > Time.
-local function getTimerValue()
-    local finalDoor = findFinalDoorAnywhere()
-    if not finalDoor then
-        return nil, nil, nil
-    end
-
-    for _, object in ipairs(finalDoor:GetDescendants()) do
-        if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
-            local rawText = object.Text
-            local remaining = parseTimerText(rawText)
-            if remaining ~= nil then
-                return remaining, rawText, object
-            end
-        end
-    end
-
-    return nil, nil, nil
-end
-
--- Mantém o player Ancorado e travado na DoorR enquanto aguarda.
--- Ao detectar <= 2 segundos, o gatilho fica concluído mesmo que o Text
--- desapareça ou seja recriado logo depois.
+-- Mantém o player Ancorado e travado na DoorR enquanto aguarda
 local function waitForTimerZero(timeout)
     local deadline = os.clock() + (timeout or 180)
-    local triggered = false
 
     while current() and os.clock() < deadline do
         local doorCFrame = getDoorRCFrame()
         local character = player.Character
         local root = character and character:FindFirstChild("HumanoidRootPart")
 
+        -- Reforça o congelamento e trava de posição dentro da DoorR
         if root and doorCFrame then
             root.Anchored = true
             root.CFrame = doorCFrame
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
         end
 
-        if not triggered then
-            local remaining, rawText, label = getTimerValue()
-
-            if remaining ~= nil then
-                print(string.format("[DS HUB] Timer detectado: %q -> %ds", tostring(rawText), remaining))
-
-                if remaining <= 2 then
-                    triggered = true
-                    print("[DS HUB] Timer chegou a <= 2s. Disparo de vitória armado.")
-                    return true
-                end
-            elseif label == nil then
-                -- Não considera Text vazio como erro: o contador pode sumir ao chegar a zero.
-                -- Continuamos monitorando até pegar o estado <= 2.
+        local label = getTimerLabel()
+        if label and label.Parent then
+            local remaining = parseTimerText(label.Text)
+            
+            if remaining ~= nil and remaining <= 2 then
+                print("[DS HUB] Cronómetro em <= 2s! Disparando teleporte no servidor...")
+                return true
             end
-        else
-            return true
         end
-
-        task.wait(0.02)
+        task.wait(0.05)
     end
 
-    return triggered
+    return false
 end
 
 -- ----------------------------------------------------------
@@ -726,20 +674,23 @@ local function teleportCFrame(destination, anchorAfter)
     return teleports:Move(destination, anchorAfter)
 end
 
-local WIN_CFRAME = CFrame.new(
-    -682.203064, 1783.02539, 83632.25,
-    -1, 0, 0,
-    0, 1, 0,
-    0, 0, -1
-)
-
 local function runDoorRSideTeleports()
     if not current() then return false end
 
-    print("[DS HUB] Timer <= 2s. Executando APENAS 1 teleporte de vitória...")
+    local base = getDoorRCFrame()
+    if not base then return false end
 
-    -- Um único teleporte final. Sem frente/trás/direita/esquerda e sem retornos intermediários.
-    return teleportCFrame(WIN_CFRAME, true)
+    -- Apenas 1 único deslocamento para frente
+    local offsetDir = Vector3.new(0, 0, -10)
+    local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
+    local targetCFrame = CFrame.new(targetPosition) * base.Rotation
+
+    print("[DS HUB] Teleporte único de vitória no servidor...")
+    
+    -- Teleporta uma única vez para a posição final e ancora
+    teleportCFrame(targetCFrame, true)
+
+    return true
 end
 
 function teleports:ToEnd()
