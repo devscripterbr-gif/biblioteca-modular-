@@ -1091,6 +1091,7 @@ local function waitForTimerZero(timeout)
     -- of becoming "0s", so we must remember that a real countdown existed
     -- and then treat the disappearance/blank text as the zero signal.
     local countdownSeen = false
+    local countdownStartedAt = nil
     local lastRemaining = nil
     local missingSince = nil
 
@@ -1103,6 +1104,7 @@ local function waitForTimerZero(timeout)
 
             if remaining ~= nil then
                 countdownSeen = true
+                countdownStartedAt = countdownStartedAt or os.clock()
                 lastRemaining = remaining
                 missingSince = nil
 
@@ -1110,6 +1112,7 @@ local function waitForTimerZero(timeout)
                 if remaining <= 0 then
                     return true
                 end
+
             elseif countdownSeen and text == "" then
                 -- The UI object exists, but its Text was cleared at 0.
                 missingSince = missingSince or os.clock()
@@ -1117,9 +1120,20 @@ local function waitForTimerZero(timeout)
                 if os.clock() - missingSince >= 0.20 then
                     return true
                 end
+
+            elseif countdownSeen and label:IsA("GuiObject") and not label.Visible then
+                -- In some rounds the Time object stays in Explorer but its
+                -- TextLabel is simply hidden when the border opens.
+                missingSince = missingSince or os.clock()
+
+                if os.clock() - missingSince >= 0.20 then
+                    return true
+                end
+
             else
                 missingSince = nil
             end
+
         elseif countdownSeen then
             -- The "Time" TextLabel itself can disappear when the border opens.
             missingSince = missingSince or os.clock()
@@ -1127,6 +1141,15 @@ local function waitForTimerZero(timeout)
             if os.clock() - missingSince >= 0.20 then
                 return true
             end
+        end
+
+        -- Safety fallback: once a genuine 2-minute countdown has been seen,
+        -- never wait forever if the UI stops updating. Allow a small margin.
+        if countdownSeen
+            and countdownStartedAt
+            and os.clock() - countdownStartedAt >= 122
+        then
+            return true
         end
 
         task.wait(0.05)
@@ -1183,7 +1206,24 @@ local function runDoorRSideTeleports()
             return false
         end
 
-        if not teleportFromDoorR(direction, 0.50) then
+        -- Recalcula a DoorR antes de cada lado, caso a porta tenha sido
+        -- recriada/movida ao abrir a fronteira.
+        local success = false
+
+        for _ = 1, 3 do
+            if not current() then
+                return false
+            end
+
+            if teleportFromDoorR(direction, 0.50) then
+                success = true
+                break
+            end
+
+            task.wait(0.10)
+        end
+
+        if not success then
             return false
         end
     end
