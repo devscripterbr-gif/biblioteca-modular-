@@ -120,6 +120,7 @@ end
 local enabled = readSetting(ENABLED_KEY) == true
 local afkEnabled = readSetting(AFK_KEY) == true
 local running = false
+local setAFKState -- Forward declaration
 
 local WAIT_AFTER_SERVER_CHANGE = 5
 local waitForNewServer = enabled
@@ -157,39 +158,64 @@ local function createAFKGui()
 
     local mainFrame = Instance.new("Frame")
     mainFrame.Size = UDim2.new(1, 0, 1, 0)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     mainFrame.BorderSizePixel = 0
     mainFrame.Parent = gui
 
     local title = Instance.new("TextLabel")
     title.Size = UDim2.new(1, 0, 0, 50)
-    title.Position = UDim2.new(0, 0, 0.35, 0)
+    title.Position = UDim2.new(0, 0, 0.32, 0)
     title.BackgroundTransparency = 1
     title.Text = "DS HUB — AFK MODE"
-    title.TextColor3 = Color3.fromRGB(0, 200, 255)
+    title.TextColor3 = Color3.fromRGB(0, 255, 127) -- Verde Neon
     title.TextSize = 28
     title.Font = Enum.Font.GothamBold
     title.Parent = mainFrame
 
     local timer = Instance.new("TextLabel")
     timer.Size = UDim2.new(1, 0, 0, 60)
-    timer.Position = UDim2.new(0, 0, 0.45, 0)
+    timer.Position = UDim2.new(0, 0, 0.42, 0)
     timer.BackgroundTransparency = 1
     timer.Text = "Tempo AFK: 00:00:00"
-    timer.TextColor3 = Color3.fromRGB(255, 255, 255)
+    timer.TextColor3 = Color3.fromRGB(0, 255, 127) -- Verde Neon
     timer.TextSize = 36
     timer.Font = Enum.Font.Gotham
     timer.Parent = mainFrame
 
     local subtitle = Instance.new("TextLabel")
     subtitle.Size = UDim2.new(1, 0, 0, 30)
-    subtitle.Position = UDim2.new(0, 0, 0.55, 0)
+    subtitle.Position = UDim2.new(0, 0, 0.52, 0)
     subtitle.BackgroundTransparency = 1
     subtitle.Text = "Renderização 3D Desativada (Modo Economia Extrema)"
-    subtitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+    subtitle.TextColor3 = Color3.fromRGB(150, 200, 150)
     subtitle.TextSize = 16
     subtitle.Font = Enum.Font.Gotham
     subtitle.Parent = mainFrame
+
+    -- Botão/Toggle na Tela do AFK
+    local exitButton = Instance.new("TextButton")
+    exitButton.Size = UDim2.new(0, 200, 0, 45)
+    exitButton.Position = UDim2.new(0.5, -100, 0.62, 0)
+    exitButton.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
+    exitButton.BorderSizePixel = 0
+    exitButton.Text = "Desativar AFK Mode"
+    exitButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    exitButton.TextSize = 16
+    exitButton.Font = Enum.Font.GothamBold
+    exitButton.Parent = mainFrame
+
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 8)
+    uiCorner.Parent = exitButton
+
+    local uiStroke = Instance.new("UIStroke")
+    uiStroke.Color = Color3.fromRGB(0, 255, 127)
+    uiStroke.Thickness = 1.5
+    uiStroke.Parent = exitButton
+
+    exitButton.MouseButton1Click:Connect(function()
+        setAFKState(false)
+    end)
 
     pcall(function()
         gui.Parent = CoreGui
@@ -211,7 +237,7 @@ local function destroyAFKGui()
     end
 end
 
-local function setAFKState(state)
+setAFKState = function(state)
     -- Só permite ativar se o Auto Farm estiver ligado
     if state and not enabled then
         state = false
