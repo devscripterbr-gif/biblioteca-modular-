@@ -1085,53 +1085,117 @@ end
 
 local function waitForTimerZero(timeout)
     local deadline = os.clock() + (timeout or 180)
+    local label = nil
+    local textConnection = nil
+    local ancestryConnection = nil
+    local triggered = false
+    local attachedLabel = nil
 
-    -- The map starts with something like "2m 00s".
-    -- When the countdown reaches 0, the Text of "Time" disappears instead
-    -- of becoming "0s", so we must remember that a real countdown existed
-    -- and then treat the disappearance/blank text as the zero signal.
-    local countdownSeen = false
-    local countdownStartedAt = nil
-    local lastRemaining = nil
-    local missingSince = nil
+    local function normalizeTimerText(value)
+        -- Remove spaces and tolerate upper/lower case, so variants such as
+        -- "00m 02s", "00M 02S" or extra spacing all match.
+        return tostring(value or ""):lower():gsub("%s+", "")
+    end
 
-    while current() and os.clock() < deadline do
-        local label = getTimerLabel()
+    local function isTargetTime(value)
+        return normalizeTimerText(value) == "00m02s"
+    end
 
-        if label and label.Parent then
-            local text = tostring(label.Text or "")
+    local function disconnect()
+        if textConnection then
+            textConnection:Disconnect()
+            textConnection = nil
+        end
 
-            -- Exact trigger first: 00m 02s.
-            if text:match("^%s*00%s*[mM]%s*02%s*[sS]%s*$") then
-                return true
+        if ancestryConnection then
+            ancestryConnection:Disconnect()
+            ancestryConnection = nil
+        end
+    end
+
+    local function attach(currentLabel)
+        if not currentLabel or currentLabel == attachedLabel then
+            return
+        end
+
+        if textConnection then
+            textConnection:Disconnect()
+            textConnection = nil
+        end
+
+        if ancestryConnection then
+            ancestryConnection:Disconnect()
+            ancestryConnection = nil
+        end
+
+        attachedLabel = currentLabel
+
+        -- Check immediately in case the value is already 00m 02s.
+        if isTargetTime(currentLabel.Text) then
+            triggered = true
+            return
+        end
+
+        -- IMPORTANT: listen to the Text property itself instead of polling.
+        -- This catches a transient "00m 02s" even if the UI changes it on
+        -- the very next frame.
+        textConnection = currentLabel:GetPropertyChangedSignal("Text"):Connect(function()
+            if isTargetTime(currentLabel.Text) then
+                triggered = true
             end
+        end)
 
-            local remaining = parseTimerText(text)
+        ancestryConnection = currentLabel.AncestryChanged:Connect(function(_, parent)
+            if not parent then
+                attachedLabel = nil
 
-            if remaining ~= nil then
-                countdownSeen = true
-                countdownStartedAt = countdownStartedAt or os.clock()
-                lastRemaining = remaining
-                missingSince = nil
-
-                -- Start specifically when the displayed timer reaches
-                -- "00m 02s" (the exact format shown in the game).
-                if text:match("^%s*00%s*[mM]%s*02%s*[sS]%s*$") then
-                    return true
+                if textConnection then
+                    textConnection:Disconnect()
+                    textConnection = nil
                 end
 
-            else
-                -- Ignore blank/hidden states here. The trigger is intentionally
-                -- based on the readable countdown reaching 0m 02s.
-                missingSince = nil
+                if ancestryConnection then
+                    ancestryConnection:Disconnect()
+                    ancestryConnection = nil
+                end
+            end
+        end)
+    end
+
+    while current() and os.clock() < deadline and not triggered do
+        label = getTimerLabel()
+
+        if label and label.Parent then
+            attach(label)
+
+            -- Also poll as a backup in case an executor/game implementation
+            -- does not deliver the property-changed signal.
+            if isTargetTime(label.Text) then
+                triggered = true
+                break
+            end
+        else
+            attachedLabel = nil
+
+            if textConnection then
+                textConnection:Disconnect()
+                textConnection = nil
+            end
+
+            if ancestryConnection then
+                ancestryConnection:Disconnect()
+                ancestryConnection = nil
             end
         end
 
-        task.wait(0.05)
+        task.wait(0.01)
     end
 
-    return false
+    disconnect()
+
+    return triggered
 end
+
 
 local function teleportFromDoorR(directionVector, seconds)
     local base = getDoorRCFrame()
@@ -1499,7 +1563,7 @@ local function gamePhase()
         return true
     end
 
-    -- 6) Quando o Time mostrar exatamente 00m 02s:
+    -- 6) Quando o Time chegar a 00m 02s, mesmo que o texto mude imediatamente depois:
     -- frente -> volta DoorR -> trás -> volta -> direita -> volta -> esquerda -> volta.
     -- Cada posição lateral permanece por exatamente 0.50s.
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
