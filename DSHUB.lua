@@ -10,6 +10,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
 local RunService = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
 
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local env = getgenv and getgenv() or _G
@@ -58,6 +59,7 @@ local AutoFarmTab = Window:CreateTab("🎟️ Auto Farm")
 -- Persistent state
 -- ----------------------------------------------------------
 local ENABLED_KEY = "DSHUB_AUTOFARM_CREDZ_ENABLED"
+local AFK_KEY = "DSHUB_AFK_MODE_ENABLED"
 local PHASE_KEY = "DSHUB_AUTOFARM_CREDZ_PHASE"
 
 local function readSetting(key)
@@ -116,6 +118,7 @@ local function queueResume()
 end
 
 local enabled = readSetting(ENABLED_KEY) == true
+local afkEnabled = readSetting(AFK_KEY) == true
 local running = false
 
 local WAIT_AFTER_SERVER_CHANGE = 5
@@ -135,6 +138,115 @@ local function current()
         and env.DSHUB_CREDZ_GENERATION == generation
         and aliveWindow(Window)
 end
+
+-- ----------------------------------------------------------
+-- AFK Mode System
+-- ----------------------------------------------------------
+local afkGui = nil
+local afkTimerText = nil
+local afkStartTime = os.time()
+
+local function createAFKGui()
+    if afkGui then return end
+
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "DSHUB_AFK_Screen"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(1, 0, 1, 0)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = gui
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 50)
+    title.Position = UDim2.new(0, 0, 0.35, 0)
+    title.BackgroundTransparency = 1
+    title.Text = "DS HUB — AFK MODE"
+    title.TextColor3 = Color3.fromRGB(0, 200, 255)
+    title.TextSize = 28
+    title.Font = Enum.Font.GothamBold
+    title.Parent = mainFrame
+
+    local timer = Instance.new("TextLabel")
+    timer.Size = UDim2.new(1, 0, 0, 60)
+    timer.Position = UDim2.new(0, 0, 0.45, 0)
+    timer.BackgroundTransparency = 1
+    timer.Text = "Tempo AFK: 00:00:00"
+    timer.TextColor3 = Color3.fromRGB(255, 255, 255)
+    timer.TextSize = 36
+    timer.Font = Enum.Font.Gotham
+    timer.Parent = mainFrame
+
+    local subtitle = Instance.new("TextLabel")
+    subtitle.Size = UDim2.new(1, 0, 0, 30)
+    subtitle.Position = UDim2.new(0, 0, 0.55, 0)
+    subtitle.BackgroundTransparency = 1
+    subtitle.Text = "Renderização 3D Desativada (Modo Economia Extrema)"
+    subtitle.TextColor3 = Color3.fromRGB(150, 150, 150)
+    subtitle.TextSize = 16
+    subtitle.Font = Enum.Font.Gotham
+    subtitle.Parent = mainFrame
+
+    pcall(function()
+        gui.Parent = CoreGui
+    end)
+    
+    if not gui.Parent then
+        gui.Parent = player:WaitForChild("PlayerGui")
+    end
+
+    afkGui = gui
+    afkTimerText = timer
+end
+
+local function destroyAFKGui()
+    if afkGui then
+        afkGui:Destroy()
+        afkGui = nil
+        afkTimerText = nil
+    end
+end
+
+local function setAFKState(state)
+    -- Só permite ativar se o Auto Farm estiver ligado
+    if state and not enabled then
+        state = false
+    end
+
+    afkEnabled = state
+    writeSetting(AFK_KEY, state)
+
+    pcall(function()
+        RunService:Set3dRenderingEnabled(not state)
+    end)
+
+    if state then
+        createAFKGui()
+        afkStartTime = os.time()
+    else
+        destroyAFKGui()
+    end
+end
+
+-- Atualiza o temporizador da tela AFK
+task.spawn(function()
+    while true do
+        if afkEnabled and enabled and afkTimerText then
+            local elapsed = os.time() - afkStartTime
+            local hours = math.floor(elapsed / 3600)
+            local mins = math.floor((elapsed % 3600) / 60)
+            local secs = elapsed % 60
+            afkTimerText.Text = string.format("Tempo AFK: %02d:%02d:%02d", hours, mins, secs)
+        elseif afkEnabled and not enabled then
+            setAFKState(false)
+        end
+        task.wait(1)
+    end
+end)
 
 -- ----------------------------------------------------------
 -- Player freeze system
@@ -865,17 +977,21 @@ local function start()
         end
 
         running = false
-        if not enabled then unfreezePlayer() end
+        if not enabled then 
+            unfreezePlayer() 
+            setAFKState(false)
+        end
     end)
 end
 
 -- ----------------------------------------------------------
--- Toggle
+-- Toggles
 -- ----------------------------------------------------------
 if type(Window.OnUnload) == "function" then
     Window:OnUnload(function()
         enabled = false
         running = false
+        setAFKState(false)
         unfreezePlayer()
     end)
 end
@@ -892,17 +1008,32 @@ AutoFarmTab:CreateToggle(
             freezePlayer()
             queueResume()
             start()
+            if afkEnabled then
+                setAFKState(true)
+            end
         else
             running = false
             writeSetting(PHASE_KEY, "Stopped")
+            setAFKState(false)
             unfreezePlayer()
         end
+    end
+)
+
+AutoFarmTab:CreateToggle(
+    "AFK Mode (Economia)",
+    afkEnabled,
+    function(value)
+        setAFKState(value)
     end
 )
 
 if enabled then
     removeHelicopters()
     freezePlayer()
+    if afkEnabled then
+        setAFKState(true)
+    end
     task.defer(start)
 end
 
