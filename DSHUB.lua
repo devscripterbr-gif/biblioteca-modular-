@@ -1100,6 +1100,12 @@ local function waitForTimerZero(timeout)
 
         if label and label.Parent then
             local text = tostring(label.Text or "")
+
+            -- Exact trigger first: 00m 02s.
+            if text:match("^%s*00%s*[mM]%s*02%s*[sS]%s*$") then
+                return true
+            end
+
             local remaining = parseTimerText(text)
 
             if remaining ~= nil then
@@ -1108,9 +1114,9 @@ local function waitForTimerZero(timeout)
                 lastRemaining = remaining
                 missingSince = nil
 
-                -- Start the side-teleport sequence at 0m 02s.
-                -- This happens before the Time text disappears at 0.
-                if remaining <= 2 then
+                -- Start specifically when the displayed timer reaches
+                -- "00m 02s" (the exact format shown in the game).
+                if text:match("^%s*00%s*[mM]%s*02%s*[sS]%s*$") then
                     return true
                 end
 
@@ -1482,7 +1488,7 @@ local function gamePhase()
     end
 
     -- 5) Não usa um timer interno de 2 minutos.
-    -- O cronômetro oficial é FinalDoor > Timer > SurfaceGui > Timer > Time. O processo lateral começa em 0m 02s.
+    -- O cronômetro oficial é FinalDoor > Timer > SurfaceGui > Timer > Time. O processo lateral começa exatamente em 00m 02s.
     writeSetting(PHASE_KEY, "WaitingTime")
 
     if not waitForTimerZero(180) then
@@ -1493,7 +1499,7 @@ local function gamePhase()
         return true
     end
 
-    -- 6) Quando o Time chegar a 0m 02s:
+    -- 6) Quando o Time mostrar exatamente 00m 02s:
     -- frente -> volta DoorR -> trás -> volta -> direita -> volta -> esquerda -> volta.
     -- Cada posição lateral permanece por exatamente 0.50s.
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
