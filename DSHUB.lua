@@ -120,7 +120,9 @@ end
 local enabled = readSetting(ENABLED_KEY) == true
 local afkEnabled = readSetting(AFK_KEY) == true
 local running = false
+
 local setAFKState -- Forward declaration
+local AFKToggleObject = nil -- Referencia para o Toggle do Hub
 
 local WAIT_AFTER_SERVER_CHANGE = 5
 local waitForNewServer = enabled
@@ -194,8 +196,8 @@ local function createAFKGui()
 
     -- Botão/Toggle na Tela do AFK
     local exitButton = Instance.new("TextButton")
-    exitButton.Size = UDim2.new(0, 200, 0, 45)
-    exitButton.Position = UDim2.new(0.5, -100, 0.62, 0)
+    exitButton.Size = UDim2.new(0, 220, 0, 45)
+    exitButton.Position = UDim2.new(0.5, -110, 0.62, 0)
     exitButton.BackgroundColor3 = Color3.fromRGB(20, 80, 40)
     exitButton.BorderSizePixel = 0
     exitButton.Text = "Desativar AFK Mode"
@@ -214,7 +216,11 @@ local function createAFKGui()
     uiStroke.Parent = exitButton
 
     exitButton.MouseButton1Click:Connect(function()
-        setAFKState(false)
+        if AFKToggleObject and type(AFKToggleObject.Set) == "function" then
+            AFKToggleObject:Set(false)
+        else
+            setAFKState(false)
+        end
     end)
 
     pcall(function()
@@ -1046,7 +1052,7 @@ AutoFarmTab:CreateToggle(
     end
 )
 
-AutoFarmTab:CreateToggle(
+AFKToggleObject = AutoFarmTab:CreateToggle(
     "AFK Mode (Economia)",
     afkEnabled,
     function(value)
