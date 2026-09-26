@@ -81,25 +81,15 @@ local function writeSetting(key, value)
 end
 
 local function getQueue()
-    if type(queue_on_teleport) == "function" then
-        return queue_on_teleport
-    end
-    if type(queueonteleport) == "function" then
-        return queueonteleport
-    end
-    if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then
-        return syn.queue_on_teleport
-    end
-    if type(fluxus) == "table" and type(fluxus.queue_on_teleport) == "function" then
-        return fluxus.queue_on_teleport
-    end
+    if type(queue_on_teleport) == "function" then return queue_on_teleport end
+    if type(queueonteleport) == "function" then return queueonteleport end
+    if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then return syn.queue_on_teleport end
+    if type(fluxus) == "table" and type(fluxus.queue_on_teleport) == "function" then return fluxus.queue_on_teleport end
 end
 
 local function queueResume()
     local queue = getQueue()
-    if not queue then
-        return false
-    end
+    if not queue then return false end
 
     local code = string.format([[
         local url = %q
@@ -108,9 +98,7 @@ local function queueResume()
         end)
         if ok and type(src) == "string" then
             local fn = loadstring(src)
-            if fn then
-                pcall(fn)
-            end
+            if fn then pcall(fn) end
         end
     ]], SCRIPT_URL)
 
@@ -121,17 +109,17 @@ local enabled = readSetting(ENABLED_KEY) == true
 local afkEnabled = readSetting(AFK_KEY) == true
 local running = false
 
-local setAFKState -- Forward declaration
-local AFKToggleObject = nil -- Referência para o Toggle do Hub
+local setAFKState
+local AFKToggleObject = nil
 
 local WAIT_AFTER_SERVER_CHANGE = 5
-local waitForNewServer = enabled
-    and readSetting(PHASE_KEY) == "WaitingForServerTransition"
+local waitForNewServer = enabled and readSetting(PHASE_KEY) == "WaitingForServerTransition"
 
 if waitForNewServer then
     writeSetting(PHASE_KEY, "ServerLoading")
     task.wait(WAIT_AFTER_SERVER_CHANGE)
 end
+
 local generation = (tonumber(env.DSHUB_CREDZ_GENERATION) or 0) + 1
 env.DSHUB_CREDZ_GENERATION = generation
 
@@ -184,16 +172,6 @@ local function createAFKGui()
     timer.Font = Enum.Font.Gotham
     timer.Parent = mainFrame
 
-    local subtitle = Instance.new("TextLabel")
-    subtitle.Size = UDim2.new(1, 0, 0, 30)
-    subtitle.Position = UDim2.new(0, 0, 0.52, 0)
-    subtitle.BackgroundTransparency = 1
-    subtitle.Text = "Renderização 3D Desativada (Modo Economia Extrema)"
-    subtitle.TextColor3 = Color3.fromRGB(150, 200, 150)
-    subtitle.TextSize = 16
-    subtitle.Font = Enum.Font.Gotham
-    subtitle.Parent = mainFrame
-
     local exitButton = Instance.new("TextButton")
     exitButton.Size = UDim2.new(0, 220, 0, 45)
     exitButton.Position = UDim2.new(0.5, -110, 0.62, 0)
@@ -205,15 +183,6 @@ local function createAFKGui()
     exitButton.Font = Enum.Font.GothamBold
     exitButton.Parent = mainFrame
 
-    local uiCorner = Instance.new("UICorner")
-    uiCorner.CornerRadius = UDim.new(0, 8)
-    uiCorner.Parent = exitButton
-
-    local uiStroke = Instance.new("UIStroke")
-    uiStroke.Color = Color3.fromRGB(0, 255, 127)
-    uiStroke.Thickness = 1.5
-    uiStroke.Parent = exitButton
-
     exitButton.MouseButton1Click:Connect(function()
         if AFKToggleObject and type(AFKToggleObject.Set) == "function" then
             AFKToggleObject:Set(false)
@@ -222,13 +191,8 @@ local function createAFKGui()
         end
     end)
 
-    pcall(function()
-        gui.Parent = CoreGui
-    end)
-    
-    if not gui.Parent then
-        gui.Parent = player:WaitForChild("PlayerGui")
-    end
+    pcall(function() gui.Parent = CoreGui end)
+    if not gui.Parent then gui.Parent = player:WaitForChild("PlayerGui") end
 
     afkGui = gui
     afkTimerText = timer
@@ -243,16 +207,12 @@ local function destroyAFKGui()
 end
 
 setAFKState = function(state)
-    if state and not enabled then
-        state = false
-    end
+    if state and not enabled then state = false end
 
     afkEnabled = state
     writeSetting(AFK_KEY, state)
 
-    pcall(function()
-        RunService:Set3dRenderingEnabled(not state)
-    end)
+    pcall(function() RunService:Set3dRenderingEnabled(not state) end)
 
     if state then
         createAFKGui()
@@ -278,175 +238,10 @@ task.spawn(function()
 end)
 
 -- ----------------------------------------------------------
--- Player freeze system
--- ----------------------------------------------------------
-local frozenCharacter = nil
-local frozenHumanoid = nil
-local frozenRoot = nil
-local frozenValues = nil
-local frozenControls = nil
-
-local function getPlayerControls()
-    local playerScripts = player:FindFirstChild("PlayerScripts")
-    local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
-
-    if not playerModule then return nil end
-
-    local ok, module = pcall(require, playerModule)
-    if not ok or not module or type(module.GetControls) ~= "function" then
-        return nil
-    end
-
-    local okControls, controls = pcall(function()
-        return module:GetControls()
-    end)
-
-    if okControls and controls then
-        return controls
-    end
-end
-
-local function freezePlayer()
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not character or not humanoid or not root then
-        return false
-    end
-
-    if frozenCharacter == character
-        and frozenHumanoid == humanoid
-        and frozenRoot == root
-    then
-        humanoid.WalkSpeed = 0
-        humanoid.AutoRotate = false
-
-        pcall(function()
-            humanoid.UseJumpPower = true
-            humanoid.JumpPower = 0
-            humanoid.JumpHeight = 0
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-        end)
-
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-
-        if frozenControls then
-            pcall(function() frozenControls:Disable() end)
-        end
-
-        return true
-    end
-
-    frozenCharacter = character
-    frozenHumanoid = humanoid
-    frozenRoot = root
-
-    frozenValues = {
-        WalkSpeed = humanoid.WalkSpeed,
-        AutoRotate = humanoid.AutoRotate,
-        UseJumpPower = humanoid.UseJumpPower,
-        JumpPower = humanoid.JumpPower,
-        JumpHeight = humanoid.JumpHeight,
-        JumpingEnabled = humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping),
-    }
-
-    humanoid.WalkSpeed = 0
-    humanoid.AutoRotate = false
-
-    pcall(function()
-        humanoid.UseJumpPower = true
-        humanoid.JumpPower = 0
-        humanoid.JumpHeight = 0
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-    end)
-
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-
-    frozenControls = getPlayerControls()
-    if frozenControls then
-        pcall(function() frozenControls:Disable() end)
-    end
-
-    return true
-end
-
-local function unfreezePlayer()
-    if frozenRoot and frozenRoot.Parent then
-        pcall(function()
-            frozenRoot.Anchored = false
-            frozenRoot.AssemblyLinearVelocity = Vector3.zero
-            frozenRoot.AssemblyAngularVelocity = Vector3.zero
-        end)
-    end
-
-    if frozenHumanoid and frozenHumanoid.Parent and frozenValues then
-        local h = frozenHumanoid
-        pcall(function()
-            h.WalkSpeed = frozenValues.WalkSpeed
-            h.AutoRotate = frozenValues.AutoRotate
-            h.UseJumpPower = frozenValues.UseJumpPower
-            h.JumpPower = frozenValues.JumpPower
-            h.JumpHeight = frozenValues.JumpHeight
-            h:SetStateEnabled(Enum.HumanoidStateType.Jumping, frozenValues.JumpingEnabled)
-        end)
-    end
-
-    if frozenControls then
-        pcall(function() frozenControls:Enable() end)
-    end
-
-    frozenCharacter = nil
-    frozenHumanoid = nil
-    frozenRoot = nil
-    frozenValues = nil
-    frozenControls = nil
-end
-
-player.CharacterAdded:Connect(function(character)
-    if not enabled then return end
-
-    task.spawn(function()
-        local humanoid = character:WaitForChild("Humanoid", 10)
-        if humanoid and enabled then
-            task.wait(0.25)
-            freezePlayer()
-        end
-    end)
-end)
-
-RunService.Heartbeat:Connect(function()
-    if not enabled or not frozenHumanoid or not frozenHumanoid.Parent then
-        return
-    end
-
-    pcall(function()
-        frozenHumanoid.WalkSpeed = 0
-        frozenHumanoid.AutoRotate = false
-        frozenHumanoid.JumpPower = 0
-        frozenHumanoid.JumpHeight = 0
-        frozenHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-    end)
-
-    local root = frozenRoot or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
-    if root then
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    if frozenControls then
-        pcall(function() frozenControls:Disable() end)
-    end
-end)
-
--- ----------------------------------------------------------
--- Noclip System (Incondicional no Stepped)
+-- Noclip System
 -- ----------------------------------------------------------
 RunService.Stepped:Connect(function()
     if not enabled then return end
-
     local character = player.Character
     if character then
         for _, part in ipairs(character:GetDescendants()) do
@@ -458,24 +253,16 @@ RunService.Stepped:Connect(function()
 end)
 
 -- ----------------------------------------------------------
--- Remote helpers
+-- Remote & Object Helpers
 -- ----------------------------------------------------------
-local function getFlowEvent()
+local function fireFlow(...)
     local flow = ReplicatedStorage:FindFirstChild("FlowClient")
     local runner = flow and flow:FindFirstChild("ClientRunner")
-    return runner and runner:FindFirstChild("Event")
-end
-
-local function fireFlow(...)
-    local event = getFlowEvent()
-    if not event then
-        return false, "FlowClient.ClientRunner.Event não encontrado"
-    end
+    local event = runner and runner:FindFirstChild("Event")
+    if not event then return false end
 
     local args = {...}
-    return pcall(function()
-        event:FireServer(unpack(args))
-    end)
+    return pcall(function() event:FireServer(unpack(args)) end)
 end
 
 local function removeHelicopters()
@@ -486,188 +273,27 @@ local function removeHelicopters()
     end
 end
 
--- ----------------------------------------------------------
--- Character teleport & Teleports Module (Validação Server)
--- ----------------------------------------------------------
-local teleports = {}
-
-local function stream(position)
-    pcall(function()
-        player:RequestStreamAroundAsync(position, 5)
-    end)
-end
-
-function teleports:GetEndZ()
-    local playerGui = player:FindFirstChildOfClass("PlayerGui")
-    if playerGui then
-        for _, object in ipairs(playerGui:GetDescendants()) do
-            if object:IsA("TextLabel")
-                and string.find(object.Text, "Mexico", 1, true)
-            then
-                local currentObject = object.Parent
-                while currentObject and currentObject ~= playerGui do
-                    local value = tonumber(currentObject.Name:match("^Border_(-?[%d%.]+)$"))
-                    if value then return value end
-                    currentObject = currentObject.Parent
-                end
-            end
-        end
-    end
-end
-
-function teleports:GetEndPrompt()
-    local map = workspace:FindFirstChild("Map")
-    local buildings = map and map:FindFirstChild("Buildings")
-    local customs = buildings and buildings:FindFirstChild("CustomsFinal")
-    if not customs then return nil end
-
-    local customsBuilding = customs:FindFirstChild("CustomsBuilding")
-    local finalDoor = customsBuilding and customsBuilding:FindFirstChild("FinalDoor")
-    local command = finalDoor and finalDoor:FindFirstChild("Command")
-    local commandButton = command and command:FindFirstChild("CommandButton")
-    local holder = commandButton and commandButton:FindFirstChild("Prompt")
-
-    if holder then
-        if holder:IsA("ProximityPrompt") then return holder end
-        local direct = holder:FindFirstChildOfClass("ProximityPrompt")
-        if direct then return direct end
-    end
-
-    for _, candidate in ipairs(customs:GetDescendants()) do
-        if candidate:IsA("ProximityPrompt")
-            and candidate.ActionText == "Activate"
-            and candidate:FindFirstAncestor("FinalDoor")
-        then
-            return candidate
-        end
-    end
-end
-
-function teleports:GetEndAnchor(endZ, direction)
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local source = root and root.Position or Vector3.new(500, 2000, endZ)
-
-    local map = workspace:FindFirstChild("Map")
-    local buildings = map and map:FindFirstChild("Buildings")
-    local best = source
-    local bestDistance = math.huge
-
-    if buildings then
-        for _, building in ipairs(buildings:GetChildren()) do
-            if building:IsA("Model") then
-                local ok, pivot = pcall(building.GetPivot, building)
-                if ok then
-                    if building.Name == "CustomsFinal" then
-                        return pivot:PointToWorldSpace(Vector3.new(-44.4001, 4.65, -16.5))
-                    end
-
-                    local distance = math.abs(endZ - pivot.Position.Z)
-                    local side = (endZ - pivot.Position.Z) * direction
-                    if side >= -500 and distance < bestDistance then
-                        best = pivot.Position
-                        bestDistance = distance
-                    end
-                end
-            end
-        end
-    end
-
-    return Vector3.new(best.X, best.Y + 30, endZ - direction * 35)
-end
-
-function teleports:GetEndPromptDestination(prompt, direction)
-    local holder = prompt and prompt.Parent
-    local holderCFrame
-
-    if holder and holder:IsA("Attachment") then
-        holderCFrame = holder.WorldCFrame
-    elseif holder and holder:IsA("BasePart") then
-        holderCFrame = holder.CFrame
-    end
-
-    if not holderCFrame then return nil end
-
-    local outward = holderCFrame.LookVector
-    if outward.Z * direction > 0 then outward = -outward end
-    if math.abs(outward.Z) < 0.25 then outward = Vector3.new(0, 0, -direction) end
-
-    local position = holderCFrame.Position + outward * 4
-    return CFrame.lookAt(
-        position,
-        Vector3.new(holderCFrame.Position.X, position.Y, holderCFrame.Position.Z),
-        Vector3.yAxis
-    )
-end
-
-function teleports:Move(destination, anchorAfter)
-    if not current() or typeof(destination) ~= "CFrame" then
-        return false
-    end
-
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not character or not humanoid or not root or humanoid.Health <= 0 then
-        return false
-    end
-
-    local ok = pcall(function()
-        root.Anchored = false
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-
-        if humanoid.SeatPart then
-            humanoid.Sit = false
-            task.wait(0.05)
-        end
-
-        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.AssemblyLinearVelocity = Vector3.zero
-                part.AssemblyAngularVelocity = Vector3.zero
-                part.CanCollide = false
-            end
-        end
-
-        character:PivotTo(destination)
-        root.CFrame = destination
-
-        RunService.Heartbeat:Wait()
-
-        root.CFrame = destination
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-
-        if anchorAfter and root and root.Parent then
-            root.Anchored = true
-        end
-
-        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end)
-
-    return ok
-end
-
-local function moveThreeTimes(destination)
-    for i = 1, 3 do
-        if not current() then return false end
-        task.wait(0.3)
-        if not current() then return false end
-        if not teleports:Move(destination, true) then return false end
-    end
-    return true
-end
-
 local function getFinalDoor()
     local map = workspace:FindFirstChild("Map")
     local buildings = map and map:FindFirstChild("Buildings")
     local customs = buildings and buildings:FindFirstChild("CustomsFinal")
     local customsBuilding = customs and customs:FindFirstChild("CustomsBuilding")
     return customsBuilding and customsBuilding:FindFirstChild("FinalDoor")
+end
+
+local function getDoorRCFrame()
+    local finalDoor = getFinalDoor()
+    local doorR = finalDoor and finalDoor:FindFirstChild("DoorR", true)
+
+    if not doorR then return nil end
+
+    if doorR:IsA("BasePart") then
+        return doorR.CFrame
+    elseif doorR:IsA("Model") then
+        local ok, pivot = pcall(doorR.GetPivot, doorR)
+        if ok and pivot then return pivot end
+    end
+    return nil
 end
 
 local function getExactFinalPrompt()
@@ -692,101 +318,27 @@ local function getExactFinalPrompt()
     return nil
 end
 
-local function getDoorRCFrame()
-    local finalDoor = getFinalDoor()
-    local doorR = finalDoor and finalDoor:FindFirstChild("DoorR", true)
-
-    if not doorR then return nil end
-
-    if doorR:IsA("BasePart") then
-        return doorR.CFrame
-    elseif doorR:IsA("Model") then
-        local ok, pivot = pcall(doorR.GetPivot, doorR)
-        if ok and pivot then return pivot end
-    end
-    return nil
-end
-
 -- ----------------------------------------------------------
--- Fast Timer Parser & Detector
+-- Teleport Lógica Direta & Simples
 -- ----------------------------------------------------------
-local function parseTimerText(text)
-    text = tostring(text or "")
-    text = text:gsub("<[^>]->", "")
-    text = text:gsub("[%s\194\160\226\128\175]+", " ")
-    
-    local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
-    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
+local function directTeleport(cframe, setAnchor)
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not character or not root then return false end
 
-    minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
-    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
+    -- 1. Desativa completamente o Anchored para mover
+    root.Anchored = false
+    character:PivotTo(cframe)
+    root.CFrame = cframe
 
-    local onlySeconds = text:match("(%d+)%s*[sS]")
-    if onlySeconds then return tonumber(onlySeconds) end
-
-    local number = text:match("(%d+)")
-    if number then return tonumber(number) end
-
-    return nil
-end
-
-local function getTimerLabel()
-    local finalDoor = getFinalDoor()
-    if not finalDoor then return nil end
-
-    local timerModel = finalDoor:FindFirstChild("Timer")
-    local surfaceGui = timerModel and timerModel:FindFirstChild("SurfaceGui")
-    local timerFrame = surfaceGui and surfaceGui:FindFirstChild("Timer")
-    local timeLabel = timerFrame and timerFrame:FindFirstChild("Time")
-
-    if timeLabel and (timeLabel:IsA("TextLabel") or timeLabel:IsA("TextButton")) then
-        return timeLabel
-    end
-
-    for _, object in ipairs(finalDoor:GetDescendants()) do
-        if object.Name == "Time" and (object:IsA("TextLabel") or object:IsA("TextButton")) then
-            return object
-        end
-    end
-
-    return nil
-end
-
-local function waitForTimerZero(timeout)
-    local deadline = os.clock() + (timeout or 180)
-
-    while current() and os.clock() < deadline do
-        local doorCFrame = getDoorRCFrame()
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-
-        if root and doorCFrame then
-            if (root.Position - doorCFrame.Position).Magnitude > 5 then
-                teleports:Move(doorCFrame, true)
-            else
-                root.Anchored = true
-                root.CFrame = doorCFrame
-            end
-        end
-
-        local label = getTimerLabel()
-        if label and label.Parent then
-            local remaining = parseTimerText(label.Text)
-            
-            if remaining ~= nil and remaining <= 2 then
-                print("[DS HUB] Cronómetro em <= 2s! Disparando teleporte no servidor...")
-                return true
-            end
-        end
+    -- 2. Ativa o Anchored apenas se for solicitado
+    if setAnchor then
         task.wait(0.05)
+        root.Anchored = true
     end
-
-    return false
+    return true
 end
 
--- ----------------------------------------------------------
--- Activation & Teleport Executions
--- ----------------------------------------------------------
 local function fireFinalDoorPrompt()
     local prompt
     local deadline = os.clock() + 15
@@ -799,128 +351,129 @@ local function fireFinalDoorPrompt()
 
     if not prompt or not prompt.Parent then return false end
 
-    for attempt = 1, 3 do
-        if not current() then return false end
-
-        if type(fireproximityprompt) == "function" then
-            pcall(function() fireproximityprompt(prompt) end)
-        end
-
-        pcall(function()
-            local duration = prompt.HoldDuration
-            prompt.HoldDuration = 0
-            prompt:InputHoldBegin()
-            task.wait(0.10)
-            prompt:InputHoldEnd()
-            prompt.HoldDuration = duration
-        end)
-
-        task.wait(0.5)
-        if not prompt.Enabled or not prompt.Parent then
-            return true
-        end
+    if type(fireproximityprompt) == "function" then
+        pcall(function() fireproximityprompt(prompt) end)
     end
+
+    pcall(function()
+        local duration = prompt.HoldDuration
+        prompt.HoldDuration = 0
+        prompt:InputHoldBegin()
+        task.wait(0.10)
+        prompt:InputHoldEnd()
+        prompt.HoldDuration = duration
+    end)
 
     return true
 end
 
-local function teleportCFrame(destination, anchorAfter)
-    if typeof(destination) ~= "CFrame" then return false end
-    pcall(function() player:RequestStreamAroundAsync(destination.Position, 12) end)
-    return teleports:Move(destination, anchorAfter)
+local function parseTimerText(text)
+    text = tostring(text or ""):gsub("<[^>]->", ""):gsub("[%s\194\160\226\128\175]+", " ")
+    local minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
+    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
+    local secs = text:match("(%d+)")
+    if secs then return tonumber(secs) end
+    return nil
 end
 
-local function runDoorRSideTeleports()
-    if not current() then return false end
+local function getTimerLabel()
+    local finalDoor = getFinalDoor()
+    if not finalDoor then return nil end
 
-    local base = getDoorRCFrame()
-    if not base then return false end
+    for _, object in ipairs(finalDoor:GetDescendants()) do
+        if object.Name == "Time" and (object:IsA("TextLabel") or object:IsA("TextButton")) then
+            return object
+        end
+    end
+    return nil
+end
 
-    local offsetDir = Vector3.new(0, 0, -10)
-    local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
-    local targetCFrame = CFrame.new(targetPosition) * base.Rotation
+-- ----------------------------------------------------------
+-- Fluxo de Jogo Simplicado
+-- ----------------------------------------------------------
+local function gamePhase()
+    local map = workspace:FindFirstChild("Map")
+    if not map then return false end
 
-    print("[DS HUB] Teleporte único de vitória no servidor...")
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if root then
+        -- 1. Desativa o Anchored no início do farm
+        root.Anchored = false
+    end
+
+    -- Vai até a porta inicial e ativa o prompt
+    local doorCFrame = getDoorRCFrame()
+    if doorCFrame then
+        directTeleport(doorCFrame, false)
+    end
+
+    removeHelicopters()
+    fireFinalDoorPrompt()
+
+    -- 2. Aguarda o Timer começar, teleporta para DoorR e ativa Anchored
+    print("[DS HUB] Aguardando o tempo começar...")
+    local timerLabel = nil
+    local timerStarted = false
     
-    teleportCFrame(targetCFrame, true)
-
-    return true
-end
-
-function teleports:ToEnd()
-    local endZ = self:GetEndZ()
-    if not endZ then return false, "End position unavailable" end
-
-    local start = workspace:FindFirstChildOfClass("SpawnLocation")
-    local direction = (not start or endZ >= start.Position.Z) and 1 or -1
-
-    local prompt = self:GetEndPrompt()
-    if prompt then
-        local destination = self:GetEndPromptDestination(prompt, direction)
-        if destination and moveThreeTimes(destination) then return true end
-    end
-
-    local anchor = self:GetEndAnchor(endZ, direction)
-    stream(anchor)
-
-    if not teleports:Move(CFrame.lookAt(anchor, anchor + Vector3.new(0, 0, direction), Vector3.yAxis), true) then
-        return false, "Fallback teleport failed"
-    end
-
-    local expires = os.clock() + 12
-    while os.clock() < expires and current() do
-        prompt = self:GetEndPrompt()
-        if prompt then
-            local destination = self:GetEndPromptDestination(prompt, direction)
-            if destination and moveThreeTimes(destination) then return true end
+    local timeout = os.clock() + 15
+    while current() and os.clock() < timeout do
+        timerLabel = getTimerLabel()
+        if timerLabel and timerLabel.Text ~= "" then
+            timerStarted = true
+            break
         end
         task.wait(0.2)
     end
 
-    return false, "End gate prompt unavailable"
-end
-
-local function waitForEndScreen()
-    local deadline = os.clock() + 20
-    while current() and os.clock() < deadline do
-        local endScreen = workspace:FindFirstChild("EndScreen", true)
-        if endScreen then return true end
-        task.wait(0.25)
+    -- Teleporta para DoorR e ativa Anchored enquanto o tempo corre
+    doorCFrame = getDoorRCFrame()
+    if doorCFrame then
+        directTeleport(doorCFrame, true)
     end
+
+    -- 3. Aguarda o tempo acabar
+    if timerStarted then
+        print("[DS HUB] Tempo em andamento, aguardando término...")
+        while current() do
+            local label = getTimerLabel()
+            if label then
+                local remaining = parseTimerText(label.Text)
+                if remaining and remaining <= 1 then
+                    break
+                end
+            end
+            task.wait(0.2)
+        end
+    end
+
+    -- 4. Quando o tempo acaba: Desativa Anchored, faz o teleporte final de vitória
+    print("[DS HUB] Tempo esgotado! Teleportando para vencer...")
+    if root then root.Anchored = false end
+
+    if doorCFrame then
+        local victoryCFrame = doorCFrame * CFrame.new(0, 0, -10)
+        directTeleport(victoryCFrame, true)
+    end
+
+    -- Replay / Próximo servidor
+    task.wait(2)
+    writeSetting(PHASE_KEY, "WaitingForServerTransition")
+    queueResume()
+    fireFlow("GameManager", "Replay")
+
+    while current() do task.wait(1) end
     return true
 end
 
-local function waitForOpeningAnimationToFinish(timeout)
-    task.wait(2)
-    return current()
-end
-
--- ----------------------------------------------------------
--- Process state machine
--- ----------------------------------------------------------
-local function waitSeconds(seconds)
-    local deadline = os.clock() + seconds
-    while current() and os.clock() < deadline do
-        task.wait(0.1)
-    end
-    return current()
-end
-
 local function lobbyPhase()
-    if not workspace:FindFirstChild("Lobbies") then
-        return false
-    end
+    if not workspace:FindFirstChild("Lobbies") then return false end
 
     writeSetting(PHASE_KEY, "LobbyPlay")
     queueResume()
 
-    local ok = fireFlow("LobbyServer", "play")
-    if not ok then
-        task.wait(2)
-        return true
-    end
-
-    if not waitSeconds(2) then return true end
+    fireFlow("LobbyServer", "play")
+    task.wait(2)
 
     writeSetting(PHASE_KEY, "LobbyCreate")
     queueResume()
@@ -932,61 +485,8 @@ local function lobbyPhase()
 
     local deadline = os.clock() + 90
     while current() and os.clock() < deadline do
-        if workspace:FindFirstChild("Map") or not workspace:FindFirstChild("Lobbies") then
-            break
-        end
+        if workspace:FindFirstChild("Map") or not workspace:FindFirstChild("Lobbies") then break end
         task.wait(0.25)
-    end
-
-    return true
-end
-
-local function gamePhase()
-    local map = workspace:FindFirstChild("Map")
-    if not map then return false end
-
-    writeSetting(PHASE_KEY, "GameEnd")
-
-    if not teleports:ToEnd() then
-        task.wait(1)
-        return true
-    end
-
-    if not waitSeconds(0.75) then return true end
-    removeHelicopters()
-
-    writeSetting(PHASE_KEY, "ActivatingFinalDoor")
-    fireFinalDoorPrompt()
-
-    writeSetting(PHASE_KEY, "WaitingDoorOpening")
-    waitForOpeningAnimationToFinish(15)
-    if not waitSeconds(1) then return true end
-
-    writeSetting(PHASE_KEY, "DoorR")
-    local doorRCFrame = getDoorRCFrame()
-    if doorRCFrame then
-        teleportCFrame(doorRCFrame, true)
-    end
-
-    writeSetting(PHASE_KEY, "WaitingTime")
-    waitForTimerZero(180)
-
-    if not current() then return true end
-
-    writeSetting(PHASE_KEY, "DoorRSideTeleport")
-    runDoorRSideTeleports()
-
-    if not current() then return true end
-
-    writeSetting(PHASE_KEY, "WaitingEndScreen")
-    waitForEndScreen()
-
-    writeSetting(PHASE_KEY, "WaitingForServerTransition")
-    queueResume()
-    fireFlow("GameManager", "Replay")
-
-    while current() do
-        task.wait(1)
     end
 
     return true
@@ -995,11 +495,9 @@ end
 local function start()
     if running then return end
     running = true
-    freezePlayer()
 
     task.spawn(function()
         while current() do
-            freezePlayer()
             removeHelicopters()
 
             if lobbyPhase() then
@@ -1012,22 +510,23 @@ local function start()
         end
 
         running = false
-        if not enabled then 
-            unfreezePlayer() 
-            setAFKState(false)
-        end
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root then root.Anchored = false end
     end)
 end
 
 -- ----------------------------------------------------------
--- Toggles
+-- Toggles & UI
 -- ----------------------------------------------------------
 if type(Window.OnUnload) == "function" then
     Window:OnUnload(function()
         enabled = false
         running = false
         setAFKState(false)
-        unfreezePlayer()
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if root then root.Anchored = false end
     end)
 end
 
@@ -1040,17 +539,16 @@ AutoFarmTab:CreateToggle(
 
         if value then
             removeHelicopters()
-            freezePlayer()
             queueResume()
             start()
-            if afkEnabled then
-                setAFKState(true)
-            end
+            if afkEnabled then setAFKState(true) end
         else
             running = false
             writeSetting(PHASE_KEY, "Stopped")
             setAFKState(false)
-            unfreezePlayer()
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if root then root.Anchored = false end
         end
     end
 )
@@ -1065,10 +563,7 @@ AFKToggleObject = AutoFarmTab:CreateToggle(
 
 if enabled then
     removeHelicopters()
-    freezePlayer()
-    if afkEnabled then
-        setAFKState(true)
-    end
+    if afkEnabled then setAFKState(true) end
     task.defer(start)
 end
 
