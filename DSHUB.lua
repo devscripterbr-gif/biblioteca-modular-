@@ -144,7 +144,6 @@ local frozenHumanoid = nil
 local frozenRoot = nil
 local frozenValues = nil
 local frozenControls = nil
-local teleporting = false
 
 local function getPlayerControls()
     local playerScripts = player:FindFirstChild("PlayerScripts")
@@ -191,17 +190,11 @@ local function freezePlayer()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
         end)
 
-        if not teleporting then
-            root.Anchored = true
-        end
-
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
         if frozenControls then
-            pcall(function()
-                frozenControls:Disable()
-            end)
+            pcall(function() frozenControls:Disable() end)
         end
 
         return true
@@ -230,28 +223,28 @@ local function freezePlayer()
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
     end)
 
-    if not teleporting then
-        root.Anchored = true
-    end
-
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 
     frozenControls = getPlayerControls()
     if frozenControls then
-        pcall(function()
-            frozenControls:Disable()
-        end)
+        pcall(function() frozenControls:Disable() end)
     end
 
     return true
 end
 
 local function unfreezePlayer()
+    if frozenRoot and frozenRoot.Parent then
+        pcall(function()
+            frozenRoot.Anchored = false
+            frozenRoot.AssemblyLinearVelocity = Vector3.zero
+            frozenRoot.AssemblyAngularVelocity = Vector3.zero
+        end)
+    end
+
     if frozenHumanoid and frozenHumanoid.Parent and frozenValues then
         local h = frozenHumanoid
-        local r = frozenRoot
-
         pcall(function()
             h.WalkSpeed = frozenValues.WalkSpeed
             h.AutoRotate = frozenValues.AutoRotate
@@ -260,20 +253,10 @@ local function unfreezePlayer()
             h.JumpHeight = frozenValues.JumpHeight
             h:SetStateEnabled(Enum.HumanoidStateType.Jumping, frozenValues.JumpingEnabled)
         end)
-
-        if r and r.Parent then
-            pcall(function()
-                r.Anchored = false
-                r.AssemblyLinearVelocity = Vector3.zero
-                r.AssemblyAngularVelocity = Vector3.zero
-            end)
-        end
     end
 
     if frozenControls then
-        pcall(function()
-            frozenControls:Enable()
-        end)
+        pcall(function() frozenControls:Enable() end)
     end
 
     frozenCharacter = nil
@@ -284,9 +267,7 @@ local function unfreezePlayer()
 end
 
 player.CharacterAdded:Connect(function(character)
-    if not enabled then
-        return
-    end
+    if not enabled then return end
 
     task.spawn(function()
         local humanoid = character:WaitForChild("Humanoid", 10)
@@ -297,7 +278,7 @@ player.CharacterAdded:Connect(function(character)
     end)
 end)
 
--- Loop principal: Ancara somente quando NÃO estiver teleportando
+-- Heartbeat de estabilização
 RunService.Heartbeat:Connect(function()
     if not enabled or not frozenHumanoid or not frozenHumanoid.Parent then
         return
@@ -311,27 +292,19 @@ RunService.Heartbeat:Connect(function()
         frozenHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
     end)
 
-    local root = frozenRoot
-        or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
-
+    local root = frozenRoot or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
     if root then
-        if not teleporting then
-            root.Anchored = true
-        end
-
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
 
     if frozenControls then
-        pcall(function()
-            frozenControls:Disable()
-        end)
+        pcall(function() frozenControls:Disable() end)
     end
 end)
 
 -- ----------------------------------------------------------
--- Noclip System
+-- Noclip System (Incondicional no Stepped)
 -- ----------------------------------------------------------
 RunService.Stepped:Connect(function()
     if not enabled then return end
@@ -370,9 +343,7 @@ end
 local function removeHelicopters()
     for _, object in ipairs(workspace:GetDescendants()) do
         if object:IsA("Model") and object.Name == "Helicopter" then
-            pcall(function()
-                object:Destroy()
-            end)
+            pcall(function() object:Destroy() end)
         end
     end
 end
@@ -398,9 +369,7 @@ function teleports:GetEndZ()
                 local currentObject = object.Parent
                 while currentObject and currentObject ~= playerGui do
                     local value = tonumber(currentObject.Name:match("^Border_(-?[%d%.]+)$"))
-                    if value then
-                        return value
-                    end
+                    if value then return value end
                     currentObject = currentObject.Parent
                 end
             end
@@ -412,9 +381,7 @@ function teleports:GetEndPrompt()
     local map = workspace:FindFirstChild("Map")
     local buildings = map and map:FindFirstChild("Buildings")
     local customs = buildings and buildings:FindFirstChild("CustomsFinal")
-    if not customs then
-        return nil
-    end
+    if not customs then return nil end
 
     local customsBuilding = customs:FindFirstChild("CustomsBuilding")
     local finalDoor = customsBuilding and customsBuilding:FindFirstChild("FinalDoor")
@@ -423,13 +390,9 @@ function teleports:GetEndPrompt()
     local holder = commandButton and commandButton:FindFirstChild("Prompt")
 
     if holder then
-        if holder:IsA("ProximityPrompt") then
-            return holder
-        end
+        if holder:IsA("ProximityPrompt") then return holder end
         local direct = holder:FindFirstChildOfClass("ProximityPrompt")
-        if direct then
-            return direct
-        end
+        if direct then return direct end
     end
 
     for _, candidate in ipairs(customs:GetDescendants()) do
@@ -485,18 +448,11 @@ function teleports:GetEndPromptDestination(prompt, direction)
         holderCFrame = holder.CFrame
     end
 
-    if not holderCFrame then
-        return nil
-    end
+    if not holderCFrame then return nil end
 
     local outward = holderCFrame.LookVector
-    if outward.Z * direction > 0 then
-        outward = -outward
-    end
-
-    if math.abs(outward.Z) < 0.25 then
-        outward = Vector3.new(0, 0, -direction)
-    end
+    if outward.Z * direction > 0 then outward = -outward end
+    if math.abs(outward.Z) < 0.25 then outward = Vector3.new(0, 0, -direction) end
 
     local position = holderCFrame.Position + outward * 4
     return CFrame.lookAt(
@@ -506,8 +462,8 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
--- Teleporte com controle dinâmico de Anchored
-function teleports:Move(destination)
+-- Teleporte Sincronizado com opção de Trava
+function teleports:Move(destination, anchorAfter)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
     end
@@ -520,49 +476,42 @@ function teleports:Move(destination)
         return false
     end
 
-    -- Sinaliza o início do teleporte para liberar a trava do Heartbeat
-    teleporting = true
-    root.Anchored = false
-    RunService.Heartbeat:Wait()
-
     local ok = pcall(function()
+        root.Anchored = false
+
         if humanoid.SeatPart then
             humanoid.Sit = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            RunService.Heartbeat:Wait()
+            task.wait(0.05)
         end
 
-        -- Aplica a nova posição desancorado
         character:PivotTo(destination)
         root.CFrame = destination
 
-        -- Aguarda replicação da física para o servidor
-        for _ = 1, 6 do
+        -- Aguarda replicação do CFrame para o servidor
+        for _ = 1, 5 do
             if not current() then break end
             root.CFrame = destination
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
             RunService.Heartbeat:Wait()
         end
+
+        -- Se solicitado, ancora no destino final (ex: dentro da DoorR)
+        if anchorAfter and root and root.Parent then
+            root.Anchored = true
+        end
     end)
 
-    -- Re-ancora o personagem e encerra o modo teleporte
-    if enabled and root and root.Parent then
-        root.Anchored = true
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    teleporting = false
     return ok
 end
 
 local function moveThreeTimes(destination)
     for i = 1, 3 do
         if not current() then return false end
-        task.wait(0.5)
+        task.wait(0.4)
         if not current() then return false end
-        if not teleports:Move(destination) then return false end
+        if not teleports:Move(destination, true) then return false end
     end
     return true
 end
@@ -621,24 +570,16 @@ local function parseTimerText(text)
     text = text:gsub("[%s\194\160\226\128\175]+", " ")
     
     local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
-    if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
-    end
+    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
 
     minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
-    if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
-    end
+    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
 
     local onlySeconds = text:match("(%d+)%s*[sS]")
-    if onlySeconds then
-        return tonumber(onlySeconds)
-    end
+    if onlySeconds then return tonumber(onlySeconds) end
 
     local number = text:match("(%d+)")
-    if number then
-        return tonumber(number)
-    end
+    if number then return tonumber(number) end
 
     return nil
 end
@@ -665,10 +606,21 @@ local function getTimerLabel()
     return nil
 end
 
+-- Mantém o player Ancorado e travado na DoorR enquanto aguarda
 local function waitForTimerZero(timeout)
     local deadline = os.clock() + (timeout or 180)
 
     while current() and os.clock() < deadline do
+        local doorCFrame = getDoorRCFrame()
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+
+        -- Reforça o congelamento e trava de posição dentro da DoorR
+        if root and doorCFrame then
+            root.Anchored = true
+            root.CFrame = doorCFrame
+        end
+
         local label = getTimerLabel()
         if label and label.Parent then
             local remaining = parseTimerText(label.Text)
@@ -724,10 +676,10 @@ local function fireFinalDoorPrompt()
     return true
 end
 
-local function teleportCFrame(destination)
+local function teleportCFrame(destination, anchorAfter)
     if typeof(destination) ~= "CFrame" then return false end
     pcall(function() player:RequestStreamAroundAsync(destination.Position, 12) end)
-    return teleports:Move(destination)
+    return teleports:Move(destination, anchorAfter)
 end
 
 local function runDoorRSideTeleports()
@@ -749,11 +701,12 @@ local function runDoorRSideTeleports()
 
         print("[DS HUB] Teleporte real servidor " .. idx .. "/4...")
         
-        teleportCFrame(targetCFrame)
+        -- Move desancorado para registrar no servidor
+        teleportCFrame(targetCFrame, false)
         task.wait(0.50)
 
         base = getDoorRCFrame() or base
-        teleportCFrame(base)
+        teleportCFrame(base, true)
         task.wait(0.10)
     end
 
@@ -776,7 +729,7 @@ function teleports:ToEnd()
     local anchor = self:GetEndAnchor(endZ, direction)
     stream(anchor)
 
-    if not teleports:Move(CFrame.lookAt(anchor, anchor + Vector3.new(0, 0, direction), Vector3.yAxis)) then
+    if not teleports:Move(CFrame.lookAt(anchor, anchor + Vector3.new(0, 0, direction), Vector3.yAxis), true) then
         return false, "Fallback teleport failed"
     end
 
@@ -878,20 +831,20 @@ local function gamePhase()
     waitForOpeningAnimationToFinish(15)
     if not waitSeconds(1) then return true end
 
-    -- 4) Teleporta para a DoorR
+    -- 4) Teleporta para DENTRO da DoorR e ativa o Anchored imediatamente
     writeSetting(PHASE_KEY, "DoorR")
     local doorRCFrame = getDoorRCFrame()
     if doorRCFrame then
-        teleportCFrame(doorRCFrame)
+        teleportCFrame(doorRCFrame, true)
     end
 
-    -- 5) Aguarda o tempo do temporizador chegar a <= 2s
+    -- 5) Aguarda o temporizador <= 2s mantendo o player ANCORADO dentro da DoorR
     writeSetting(PHASE_KEY, "WaitingTime")
     waitForTimerZero(180)
 
     if not current() then return true end
 
-    -- 6) Executa os 4 teleportes desancorados de 0.5s cada
+    -- 6) Executa os 4 teleportes rápidos de servidor
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
     runDoorRSideTeleports()
 
