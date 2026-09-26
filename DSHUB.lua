@@ -147,6 +147,7 @@ local frozenHumanoid = nil
 local frozenRoot = nil
 local frozenValues = nil
 local frozenControls = nil
+local teleporting = false
 
 local function getPlayerControls()
     local playerScripts = player:FindFirstChild("PlayerScripts")
@@ -312,7 +313,11 @@ RunService.Heartbeat:Connect(function()
         or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
 
     if root then
-        root.Anchored = true
+        -- Keep controls disabled, but do not anchor during a teleport.
+        if not teleporting then
+            root.Anchored = true
+        end
+
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -707,6 +712,10 @@ function teleports:GetEndPromptDestination(prompt, direction)
 end
 
 function teleports:Move(destination)
+    if not current() then
+        return false
+    end
+
     if typeof(destination) ~= "CFrame" then
         return false
     end
@@ -714,34 +723,73 @@ function teleports:Move(destination)
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local root = character and character:FindFirstChild("HumanoidRootPart")
+
     if not character or not humanoid or not root or humanoid.Health <= 0 then
         return false
     end
 
+    local oldAnchored = root.Anchored
     local camera = workspace.CurrentCamera
-    local oldType = camera and camera.CameraType
-    local oldSubject = camera and camera.CameraSubject
-    local oldCFrame = camera and camera.CFrame
+    local cameraCFrame = camera and camera.CFrame
+    local cameraSubject = camera and camera.CameraSubject
+    local cameraType = camera and camera.CameraType
+
+    teleporting = true
 
     if camera then
         camera.CameraType = Enum.CameraType.Scriptable
-        camera.CFrame = oldCFrame
+        camera.CFrame = cameraCFrame
     end
 
     local ok = pcall(function()
+        -- IMPORTANT: an anchored root can leave the server at the old position.
+        root.Anchored = false
+
+        if humanoid.SeatPart then
+            humanoid.Sit = false
+            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            RunService.Heartbeat:Wait()
+        end
+
         character:PivotTo(destination)
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-        RunService.Heartbeat:Wait()
+        root.CFrame = destination
+
+        -- Keep the exact CFrame for multiple frames so the replicated
+        -- character state settles at the destination.
+        for _ = 1, 8 do
+            if not current() then
+                break
+            end
+
+            root.CFrame = destination
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.AssemblyAngularVelocity = Vector3.zero
+            RunService.Heartbeat:Wait()
+        end
     end)
 
     if camera and camera.Parent then
-        camera.CameraSubject = oldSubject
-        camera.CameraType = oldType
-        camera.CFrame = oldCFrame
+        camera.CameraSubject = cameraSubject
+        camera.CameraType = cameraType
+        camera.CFrame = cameraCFrame
     end
 
-    return ok
+    teleporting = false
+
+    if not ok then
+        root.Anchored = oldAnchored
+        return false
+    end
+
+    if enabled and root.Parent then
+        root.Anchored = true
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    else
+        root.Anchored = oldAnchored
+    end
+
+    return true
 end
 
 local function moveThreeTimes(destination)
@@ -890,8 +938,8 @@ local getTimerLabel
 local parseTimerText
 
 local function fireFinalDoorPrompt()
-    local deadline = os.clock() + 15
     local prompt
+    local deadline = os.clock() + 15
 
     while current() and os.clock() < deadline do
         prompt = getExactFinalPrompt()
@@ -907,49 +955,66 @@ local function fireFinalDoorPrompt()
         return false
     end
 
-    -- DoorR is the intended position. Re-read the prompt on every retry.
-    for attempt = 1, 15 do
+    for attempt = 1, 3 do
         if not current() then
             return false
         end
 
         prompt = getExactFinalPrompt()
+        if not prompt or not prompt.Parent then
+            task.wait(0.25)
+            continue
+        end
 
-        if prompt and prompt.Parent then
-            -- Make the prompt interactable locally when possible.
+        local label = getTimerLabel()
+        local before = label and parseTimerText(label.Text) or nil
+
+        -- Do not teleport to DoorR here. The prompt must be activated
+        -- while the server still has the player at Command.
+        if type(fireproximityprompt) == "function" then
             pcall(function()
-                prompt.Enabled = true
-            end)
-
-            if type(fireproximityprompt) == "function" then
-                pcall(fireproximityprompt, prompt)
-                pcall(fireproximityprompt, prompt, 1, true)
-                pcall(fireproximityprompt, prompt, 2, true)
-            end
-
-            -- Also invoke the prompt's hold interface.
-            pcall(function()
-                local oldDuration = prompt.HoldDuration
-                prompt.HoldDuration = 0
-                prompt:InputHoldBegin()
-                task.wait(0.12)
-                prompt:InputHoldEnd()
-                prompt.HoldDuration = oldDuration
+                fireproximityprompt(prompt)
             end)
         end
 
-        task.wait(0.25)
+        -- Same native fallback as the original RUNAWAYS script.
+        pcall(function()
+            local duration = prompt.HoldDuration
 
-        -- The timer is the confirmation signal, not pcall() success.
-        local label = getTimerLabel()
-        if label then
-            local remaining = parseTimerText(label.Text)
-            if remaining and remaining > 0 then
+            prompt.HoldDuration = 0
+            prompt:InputHoldBegin()
+            task.wait(0.10)
+            prompt:InputHoldEnd()
+            prompt.HoldDuration = duration
+        end)
+
+        local expires = os.clock() + 6
+
+        while current() and os.clock() < expires do
+            if not prompt.Parent then
                 return true
             end
+
+            local currentLabel = getTimerLabel()
+            local after = currentLabel and parseTimerText(currentLabel.Text) or nil
+
+            -- Confirm the actual game state rather than trusting pcall().
+            if not prompt.Enabled then
+                return true
+            end
+
+            if after and before and after < before then
+                return true
+            end
+
+            if after and after < 120 then
+                return true
+            end
+
+            task.wait(0.20)
         end
 
-        task.wait(0.25)
+        task.wait(attempt)
     end
 
     return false
@@ -1183,6 +1248,73 @@ local function waitForEndScreen()
 end
 
 -- ----------------------------------------------------------
+-- Door opening completion
+-- ----------------------------------------------------------
+local function waitForOpeningAnimationToFinish(timeout)
+    local finalDoor = getFinalDoor()
+    if not finalDoor then
+        return false
+    end
+
+    local deadline = os.clock() + (timeout or 15)
+    local lastSignature = nil
+    local stableSince = nil
+
+    while current() and os.clock() < deadline do
+        local playing = false
+
+        for _, object in ipairs(finalDoor:GetDescendants()) do
+            if object:IsA("Animator") then
+                local ok, tracks = pcall(function()
+                    return object:GetPlayingAnimationTracks()
+                end)
+
+                if ok then
+                    for _, track in ipairs(tracks) do
+                        if track.IsPlaying then
+                            playing = true
+                            break
+                        end
+                    end
+                end
+            end
+
+            if playing then
+                break
+            end
+        end
+
+        local left = finalDoor:FindFirstChild("DoorL")
+        local right = finalDoor:FindFirstChild("DoorR")
+        local leftDoor = left and left:FindFirstChild("Door", true)
+        local rightDoor = right and right:FindFirstChild("Door", true)
+
+        local signature = tostring(leftDoor and leftDoor.CFrame or "")
+            .. "|"
+            .. tostring(rightDoor and rightDoor.CFrame or "")
+
+        if not playing and signature ~= "|" then
+            if signature == lastSignature then
+                stableSince = stableSince or os.clock()
+
+                if os.clock() - stableSince >= 0.45 then
+                    return true
+                end
+            else
+                stableSince = nil
+            end
+        else
+            stableSince = nil
+        end
+
+        lastSignature = signature
+        task.wait(0.10)
+    end
+
+    return current()
+end
+
+-- ----------------------------------------------------------
 -- Process state machine
 -- ----------------------------------------------------------
 local function waitSeconds(seconds)
@@ -1255,20 +1387,41 @@ local function gamePhase()
 
     writeSetting(PHASE_KEY, "GameEnd")
 
-    -- 1) Carrega o final usando a cadeia antiga e os 3 teleportes de 1s.
+    -- 1) Chega ao Command/final usando a cadeia antiga e os 3 teleportes.
     local ok = teleports:ToEnd()
     if not ok then
         task.wait(1)
         return true
     end
 
-    if not waitSeconds(0.5) then
+    -- Dá tempo para a posição do Command chegar ao servidor.
+    if not waitSeconds(0.75) then
         return true
     end
 
     removeHelicopters()
 
-    -- 2) Vai para o DoorR, que é o ponto inicial dos quatro teleportes.
+    -- 2) O prompt é ativado ENQUANTO o player ainda está no Command.
+    writeSetting(PHASE_KEY, "ActivatingFinalDoor")
+
+    if not fireFinalDoorPrompt() then
+        task.wait(1)
+        return true
+    end
+
+    -- 3) Só depois da ativação espera a animação de abertura terminar
+    -- e acrescenta mais 2 segundos.
+    writeSetting(PHASE_KEY, "WaitingDoorOpening")
+
+    if not waitForOpeningAnimationToFinish(15) then
+        return true
+    end
+
+    if not waitSeconds(2) then
+        return true
+    end
+
+    -- 4) Agora sim vai para DoorR, com a posição sendo replicada ao servidor.
     writeSetting(PHASE_KEY, "DoorR")
 
     local doorRCFrame = getDoorRCFrame()
@@ -1282,15 +1435,11 @@ local function gamePhase()
         return true
     end
 
-    -- 3) Dispara especificamente o ProximityPrompt de
-    -- FinalDoor > Command > CommandButton > Prompt.
-    -- Só continua quando o "Time" do mapa realmente começar.
-    if not fireFinalDoorPrompt() then
-        task.wait(1)
+    if not waitSeconds(0.35) then
         return true
     end
 
-    -- 4) Não usa um timer interno de 2 minutos.
+    -- 5) Não usa um timer interno de 2 minutos.
     -- O cronômetro oficial é o TextLabel "Time" do mapa.
     writeSetting(PHASE_KEY, "WaitingTime")
 
@@ -1302,7 +1451,7 @@ local function gamePhase()
         return true
     end
 
-    -- 5) Quando o Time chegar a 0:
+    -- 6) Quando o Time chegar a 0:
     -- frente -> volta DoorR -> trás -> volta -> direita -> volta -> esquerda -> volta.
     -- Cada posição lateral permanece por exatamente 0.50s.
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
@@ -1316,14 +1465,14 @@ local function gamePhase()
         return true
     end
 
-    -- 6) Só depois do último retorno ao DoorR espera o EndScreen.
+    -- 7) Só depois do último retorno ao DoorR espera o EndScreen.
     writeSetting(PHASE_KEY, "WaitingEndScreen")
 
     if not waitForEndScreen() then
         return true
     end
 
-    -- 7) EndScreen encontrado: Replay uma única vez e não executa
+    -- 8) EndScreen encontrado: Replay uma única vez e não executa
     -- nenhuma outra etapa nesta instância.
     writeSetting(PHASE_KEY, "WaitingForServerTransition")
     queueResume()
