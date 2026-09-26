@@ -137,14 +137,13 @@ local function current()
 end
 
 -- ----------------------------------------------------------
--- Player freeze system
+-- Player freeze system (Sem Anchored para permitir replicação ao Servidor)
 -- ----------------------------------------------------------
 local frozenCharacter = nil
 local frozenHumanoid = nil
 local frozenRoot = nil
 local frozenValues = nil
 local frozenControls = nil
-local teleporting = false
 
 local function getPlayerControls()
     local playerScripts = player:FindFirstChild("PlayerScripts")
@@ -191,10 +190,7 @@ local function freezePlayer()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
         end)
 
-        if not teleporting then
-            root.Anchored = true
-        end
-
+        root.Anchored = false
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
@@ -218,7 +214,6 @@ local function freezePlayer()
         JumpPower = humanoid.JumpPower,
         JumpHeight = humanoid.JumpHeight,
         JumpingEnabled = humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping),
-        Anchored = root.Anchored,
     }
 
     humanoid.WalkSpeed = 0
@@ -231,10 +226,7 @@ local function freezePlayer()
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
     end)
 
-    if not teleporting then
-        root.Anchored = true
-    end
-
+    root.Anchored = false
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 
@@ -264,7 +256,7 @@ local function unfreezePlayer()
 
         if r and r.Parent then
             pcall(function()
-                r.Anchored = frozenValues.Anchored
+                r.Anchored = false
                 r.AssemblyLinearVelocity = Vector3.zero
                 r.AssemblyAngularVelocity = Vector3.zero
             end)
@@ -315,11 +307,8 @@ RunService.Heartbeat:Connect(function()
         or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
 
     if root then
-        -- Não força o Anchored durante o processo de teleporte
-        if not teleporting then
-            root.Anchored = true
-        end
-
+        -- MANTÉM UNANCHORED para permitir replicação contínua para o servidor
+        root.Anchored = false
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -491,7 +480,7 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
--- Teleporte corrigido: Desancora antes de mover para o servidor aceitar a nova posição
+-- Teleporte com replicação real para o servidor (Sem Anchored)
 function teleports:Move(destination)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
@@ -505,11 +494,7 @@ function teleports:Move(destination)
         return false
     end
 
-    -- Marca que o teleporte está em andamento para impedir que o Heartbeat ancore o player
-    teleporting = true
-
     local ok = pcall(function()
-        -- 1. Desancora obrigatoriamente para o servidor processar a mudança
         root.Anchored = false
         
         if humanoid.SeatPart then
@@ -518,35 +503,21 @@ function teleports:Move(destination)
             RunService.Heartbeat:Wait()
         end
 
-        -- 2. Teleporta o personagem
+        -- Aplica a posição no personagem e no RootPart
         character:PivotTo(destination)
         root.CFrame = destination
 
-        -- 3. Mantém a posição por alguns frames para o servidor replicar com sucesso
-        for _ = 1, 6 do
+        -- Mantém a posição por alguns frames enquanto desancorado para o servidor sincronizar
+        for _ = 1, 8 do
             if not current() then break end
             root.CFrame = destination
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
-            RunService.Heartbeat:Wait()
+            RunService.Stepped:Wait()
         end
     end)
 
-    -- Libera a flag do teleporte
-    teleporting = false
-
-    if not ok then
-        return false
-    end
-
-    -- Re-ancora o player após confirmação no servidor
-    if enabled and root.Parent then
-        root.Anchored = true
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    return true
+    return ok
 end
 
 local function moveThreeTimes(destination)
@@ -741,7 +712,6 @@ local function runDoorRSideTeleports()
 
         print("[DS HUB] Teleporte real servidor " .. idx .. "/4...")
         
-        -- Move desancorando para o servidor validar a posição
         teleportCFrame(targetCFrame)
         task.wait(0.50)
 
