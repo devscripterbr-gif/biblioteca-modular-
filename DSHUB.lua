@@ -137,7 +137,7 @@ local function current()
 end
 
 -- ----------------------------------------------------------
--- Player freeze system (Sem Anchored para permitir replicação ao Servidor)
+-- Player freeze system
 -- ----------------------------------------------------------
 local frozenCharacter = nil
 local frozenHumanoid = nil
@@ -290,6 +290,7 @@ player.CharacterAdded:Connect(function(character)
     end)
 end)
 
+-- Loop de controle e paralisia do personagem
 RunService.Heartbeat:Connect(function()
     if not enabled or not frozenHumanoid or not frozenHumanoid.Parent then
         return
@@ -307,7 +308,6 @@ RunService.Heartbeat:Connect(function()
         or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
 
     if root then
-        -- MANTÉM UNANCHORED para permitir replicação contínua para o servidor
         root.Anchored = false
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
@@ -317,6 +317,22 @@ RunService.Heartbeat:Connect(function()
         pcall(function()
             frozenControls:Disable()
         end)
+    end
+end)
+
+-- ----------------------------------------------------------
+-- Noclip System (Permite entrar na DoorR sem colisões)
+-- ----------------------------------------------------------
+RunService.Stepped:Connect(function()
+    if not enabled then return end
+
+    local character = player.Character
+    if character then
+        for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.CanCollide = false
+            end
+        end
     end
 end)
 
@@ -480,7 +496,6 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
--- Teleporte com replicação real para o servidor (Sem Anchored)
 function teleports:Move(destination)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
@@ -503,11 +518,9 @@ function teleports:Move(destination)
             RunService.Heartbeat:Wait()
         end
 
-        -- Aplica a posição no personagem e no RootPart
         character:PivotTo(destination)
         root.CFrame = destination
 
-        -- Mantém a posição por alguns frames enquanto desancorado para o servidor sincronizar
         for _ = 1, 8 do
             if not current() then break end
             root.CFrame = destination
