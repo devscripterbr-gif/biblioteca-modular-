@@ -319,23 +319,33 @@ local function getExactFinalPrompt()
 end
 
 -- ----------------------------------------------------------
--- Teleport Lógica Direta & Simples
+-- Teleporte Correto com Sincronização do Servidor
 -- ----------------------------------------------------------
-local function directTeleport(cframe, setAnchor)
+local function forceServerTeleport(cframe, anchorAfter)
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not character or not root then return false end
 
-    -- 1. Desativa completamente o Anchored para mover
+    -- 1. Desancora para permitir a movimentação física
     root.Anchored = false
+    
+    -- 2. Zera as velocidades para o servidor não aplicar rollback por aceleração
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+
+    -- 3. Move a posição do personagem
     character:PivotTo(cframe)
     root.CFrame = cframe
 
-    -- 2. Ativa o Anchored apenas se for solicitado
-    if setAnchor then
-        task.wait(0.05)
+    -- 4. Aguarda o frame do servidor registrar a nova posição
+    RunService.Heartbeat:Wait()
+
+    -- 5. Aplica a ancoragem se solicitado
+    if anchorAfter then
+        root.CFrame = cframe
         root.Anchored = true
     end
+
     return true
 end
 
@@ -389,7 +399,7 @@ local function getTimerLabel()
 end
 
 -- ----------------------------------------------------------
--- Fluxo de Jogo Simplicado
+-- Fluxo Solicitado
 -- ----------------------------------------------------------
 local function gamePhase()
     local map = workspace:FindFirstChild("Map")
@@ -397,44 +407,35 @@ local function gamePhase()
 
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
-    if root then
-        -- 1. Desativa o Anchored no início do farm
-        root.Anchored = false
-    end
-
-    -- Vai até a porta inicial e ativa o prompt
-    local doorCFrame = getDoorRCFrame()
-    if doorCFrame then
-        directTeleport(doorCFrame, false)
+    
+    -- STEP 1: Desativa o Anchored completamente no início
+    if root then 
+        root.Anchored = false 
     end
 
     removeHelicopters()
     fireFinalDoorPrompt()
 
-    -- 2. Aguarda o Timer começar, teleporta para DoorR e ativa Anchored
-    print("[DS HUB] Aguardando o tempo começar...")
-    local timerLabel = nil
+    -- Espera o timer do jogo responder
     local timerStarted = false
-    
     local timeout = os.clock() + 15
     while current() and os.clock() < timeout do
-        timerLabel = getTimerLabel()
-        if timerLabel and timerLabel.Text ~= "" then
+        local label = getTimerLabel()
+        if label and label.Text ~= "" then
             timerStarted = true
             break
         end
         task.wait(0.2)
     end
 
-    -- Teleporta para DoorR e ativa Anchored enquanto o tempo corre
-    doorCFrame = getDoorRCFrame()
+    -- STEP 2: Quando o tempo começa, teleporta para DoorR e ATIVA o Anchored
+    local doorCFrame = getDoorRCFrame()
     if doorCFrame then
-        directTeleport(doorCFrame, true)
+        forceServerTeleport(doorCFrame, true)
     end
 
-    -- 3. Aguarda o tempo acabar
+    -- STEP 3: Aguarda o tempo acabar ancorado na DoorR
     if timerStarted then
-        print("[DS HUB] Tempo em andamento, aguardando término...")
         while current() do
             local label = getTimerLabel()
             if label then
@@ -447,16 +448,17 @@ local function gamePhase()
         end
     end
 
-    -- 4. Quando o tempo acaba: Desativa Anchored, faz o teleporte final de vitória
-    print("[DS HUB] Tempo esgotado! Teleportando para vencer...")
-    if root then root.Anchored = false end
+    -- STEP 4: Quando o tempo acaba, desativa Anchored e faz o teleporte final de vitória
+    if root then 
+        root.Anchored = false 
+    end
 
     if doorCFrame then
         local victoryCFrame = doorCFrame * CFrame.new(0, 0, -10)
-        directTeleport(victoryCFrame, true)
+        forceServerTeleport(victoryCFrame, true)
     end
 
-    -- Replay / Próximo servidor
+    -- Reinicia a partida / Próximo servidor
     task.wait(2)
     writeSetting(PHASE_KEY, "WaitingForServerTransition")
     queueResume()
