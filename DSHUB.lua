@@ -137,7 +137,7 @@ local function current()
 end
 
 -- ----------------------------------------------------------
--- Player freeze: movement is disabled while automation runs.
+-- Player freeze system
 -- ----------------------------------------------------------
 local frozenCharacter = nil
 local frozenHumanoid = nil
@@ -191,7 +191,10 @@ local function freezePlayer()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
         end)
 
-        root.Anchored = true
+        if not teleporting then
+            root.Anchored = true
+        end
+
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
@@ -228,7 +231,10 @@ local function freezePlayer()
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
     end)
 
-    root.Anchored = true
+    if not teleporting then
+        root.Anchored = true
+    end
+
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 
@@ -309,6 +315,7 @@ RunService.Heartbeat:Connect(function()
         or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
 
     if root then
+        -- Não força o Anchored durante o processo de teleporte
         if not teleporting then
             root.Anchored = true
         end
@@ -484,6 +491,7 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
+-- Teleporte corrigido: Desancora antes de mover para o servidor aceitar a nova posição
 function teleports:Move(destination)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
@@ -497,21 +505,25 @@ function teleports:Move(destination)
         return false
     end
 
-    local oldAnchored = root.Anchored
+    -- Marca que o teleporte está em andamento para impedir que o Heartbeat ancore o player
     teleporting = true
 
     local ok = pcall(function()
+        -- 1. Desancora obrigatoriamente para o servidor processar a mudança
         root.Anchored = false
+        
         if humanoid.SeatPart then
             humanoid.Sit = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             RunService.Heartbeat:Wait()
         end
 
+        -- 2. Teleporta o personagem
         character:PivotTo(destination)
         root.CFrame = destination
 
-        for _ = 1, 8 do
+        -- 3. Mantém a posição por alguns frames para o servidor replicar com sucesso
+        for _ = 1, 6 do
             if not current() then break end
             root.CFrame = destination
             root.AssemblyLinearVelocity = Vector3.zero
@@ -520,19 +532,18 @@ function teleports:Move(destination)
         end
     end)
 
+    -- Libera a flag do teleporte
     teleporting = false
 
     if not ok then
-        root.Anchored = oldAnchored
         return false
     end
 
+    -- Re-ancora o player após confirmação no servidor
     if enabled and root.Parent then
         root.Anchored = true
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
-    else
-        root.Anchored = oldAnchored
     end
 
     return true
@@ -541,7 +552,7 @@ end
 local function moveThreeTimes(destination)
     for i = 1, 3 do
         if not current() then return false end
-        task.wait(1)
+        task.wait(0.5)
         if not current() then return false end
         if not teleports:Move(destination) then return false end
     end
@@ -598,7 +609,7 @@ end
 -- ----------------------------------------------------------
 local function parseTimerText(text)
     text = tostring(text or "")
-    text = text:gsub("<[^>]->", "") -- Remove tags de RichText
+    text = text:gsub("<[^>]->", "")
     text = text:gsub("[%s\194\160\226\128\175]+", " ")
     
     local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
@@ -654,13 +665,12 @@ local function waitForTimerZero(timeout)
         if label and label.Parent then
             local remaining = parseTimerText(label.Text)
             
-            -- Dispara quando o tempo for 2 segundos ou menos!
             if remaining ~= nil and remaining <= 2 then
-                print("[DS HUB] Cronómetro detetado em <= 2s! A iniciar teleportes...")
+                print("[DS HUB] Cronómetro em <= 2s! Disparando teleportes no servidor...")
                 return true
             end
         end
-        task.wait(0.05) -- Leitura constante ultra rápida sem travar
+        task.wait(0.05)
     end
 
     return false
@@ -714,10 +724,10 @@ end
 
 local function runDoorRSideTeleports()
     local directions = {
-        Vector3.new(0, 0, -10), -- Frente (10 studs)
-        Vector3.new(0, 0, 10),  -- Trás (10 studs)
-        Vector3.new(10, 0, 0),  -- Direita (10 studs)
-        Vector3.new(-10, 0, 0), -- Esquerda (10 studs)
+        Vector3.new(0, 0, -10), -- Frente
+        Vector3.new(0, 0, 10),  -- Trás
+        Vector3.new(10, 0, 0),  -- Direita
+        Vector3.new(-10, 0, 0), -- Esquerda
     }
 
     for idx, offsetDir in ipairs(directions) do
@@ -726,17 +736,15 @@ local function runDoorRSideTeleports()
         local base = getDoorRCFrame()
         if not base then return false end
 
-        -- Calcula a posição deslocada em relação à rotação da porta
         local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
         local targetCFrame = CFrame.new(targetPosition) * base.Rotation
 
-        print("[DS HUB] Teleporte lateral " .. idx .. "/4...")
+        print("[DS HUB] Teleporte real servidor " .. idx .. "/4...")
         
-        -- Teleporta para o lado e aguarda exatamente 0.50s
+        -- Move desancorando para o servidor validar a posição
         teleportCFrame(targetCFrame)
         task.wait(0.50)
 
-        -- Retorna ao centro (DoorR) antes do próximo lado
         base = getDoorRCFrame() or base
         teleportCFrame(base)
         task.wait(0.10)
@@ -789,7 +797,7 @@ local function waitForEndScreen()
 end
 
 local function waitForOpeningAnimationToFinish(timeout)
-    task.wait(2) -- Tempo de resposta padrão para a animação da porta iniciar
+    task.wait(2)
     return current()
 end
 
@@ -870,13 +878,13 @@ local function gamePhase()
         teleportCFrame(doorRCFrame)
     end
 
-    -- 5) Aguarda o tempo do temporizador chegar a 00m 02s
+    -- 5) Aguarda o tempo do temporizador chegar a <= 2s
     writeSetting(PHASE_KEY, "WaitingTime")
     waitForTimerZero(180)
 
     if not current() then return true end
 
-    -- 6) Executa os 4 teleportes laterais (frente, trás, direita, esquerda) de 0.5s cada
+    -- 6) Executa os 4 teleportes desancorados de 0.5s cada
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
     runDoorRSideTeleports()
 
