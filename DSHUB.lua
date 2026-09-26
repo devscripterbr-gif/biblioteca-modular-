@@ -1026,7 +1026,7 @@ getTimerLabel = function()
         return nil
     end
 
-    -- Exact path from the newest Explorer screenshot:
+    -- Exact hierarchy from the Explorer:
     -- FinalDoor > Timer > SurfaceGui > Timer > Time
     local timerModel = finalDoor:FindFirstChild("Timer")
     local surfaceGui = timerModel and timerModel:FindFirstChild("SurfaceGui")
@@ -1041,7 +1041,20 @@ getTimerLabel = function()
         return timeLabel
     end
 
-    -- Strict fallback inside FinalDoor: only a GUI object named "Time".
+    -- Same path, but tolerate dynamically recreated intermediate folders.
+    if timerModel then
+        for _, object in ipairs(timerModel:GetDescendants()) do
+            if object.Name == "Time"
+                and (object:IsA("TextLabel")
+                    or object:IsA("TextButton")
+                    or object:IsA("TextBox"))
+            then
+                return object
+            end
+        end
+    end
+
+    -- Last-resort fallback inside FinalDoor only.
     for _, object in ipairs(finalDoor:GetDescendants()) do
         if object.Name == "Time"
             and (object:IsA("TextLabel")
@@ -1058,24 +1071,38 @@ end
 parseTimerText = function(text)
     text = tostring(text or "")
 
-    -- Screenshot format: "2m 00s".
+    -- Time is a RichText TextLabel. Strip all markup before parsing.
+    text = text:gsub("<[^>]->", "")
+    text = text
+        :gsub("\194\160", " ") -- UTF-8 non-breaking space
+        :gsub("\226\128\175", " ") -- UTF-8 narrow no-break space
+        :gsub("%s+", " ")
+        :match("^%s*(.-)%s*$")
+
+    -- Accept:
+    -- 00m 02s
+    -- 0m 02s
+    -- 00m02s
+    -- 00M 02S
     local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
     if minutes and seconds then
         return tonumber(minutes) * 60 + tonumber(seconds)
     end
 
-    -- Accept common variants too, without replacing the Time label logic.
+    -- mm:ss
     minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
     if minutes and seconds then
         return tonumber(minutes) * 60 + tonumber(seconds)
     end
 
-    local onlySeconds = text:match("^(%d+)%s*[sS]$")
+    -- Just seconds
+    local onlySeconds = text:match("(%d+)%s*[sS]")
     if onlySeconds then
         return tonumber(onlySeconds)
     end
 
-    local number = text:match("^(%d+)$")
+    -- Plain number
+    local number = text:match("(%d+)")
     if number then
         return tonumber(number)
     end
@@ -1089,17 +1116,9 @@ local function waitForTimerZero(timeout)
     local textConnection = nil
     local ancestryConnection = nil
     local triggered = false
+    local countdownSeen = false
+    local previousRemaining = nil
     local attachedLabel = nil
-
-    local function normalizeTimerText(value)
-        -- Remove spaces and tolerate upper/lower case, so variants such as
-        -- "00m 02s", "00M 02S" or extra spacing all match.
-        return tostring(value or ""):lower():gsub("%s+", "")
-    end
-
-    local function isTargetTime(value)
-        return normalizeTimerText(value) == "00m02s"
-    end
 
     local function disconnect()
         if textConnection then
@@ -1110,6 +1129,24 @@ local function waitForTimerZero(timeout)
         if ancestryConnection then
             ancestryConnection:Disconnect()
             ancestryConnection = nil
+        end
+    end
+
+    local function checkText(value)
+        local remaining = parseTimerText(value)
+
+        if remaining ~= nil then
+            countdownSeen = true
+
+            -- The moment the real countdown reaches 2 seconds or less,
+            -- trigger the lateral-teleport sequence. Do not wait for the
+            -- text to disappear at zero.
+            if remaining <= 2 then
+                triggered = true
+                return
+            end
+
+            previousRemaining = remaining
         end
     end
 
@@ -1130,19 +1167,15 @@ local function waitForTimerZero(timeout)
 
         attachedLabel = currentLabel
 
-        -- Check immediately in case the value is already 00m 02s.
-        if isTargetTime(currentLabel.Text) then
-            triggered = true
-            return
-        end
+        -- Immediate check.
+        checkText(currentLabel.Text)
 
-        -- IMPORTANT: listen to the Text property itself instead of polling.
-        -- This catches a transient "00m 02s" even if the UI changes it on
-        -- the very next frame.
         textConnection = currentLabel:GetPropertyChangedSignal("Text"):Connect(function()
-            if isTargetTime(currentLabel.Text) then
-                triggered = true
+            if triggered then
+                return
             end
+
+            checkText(currentLabel.Text)
         end)
 
         ancestryConnection = currentLabel.AncestryChanged:Connect(function(_, parent)
@@ -1168,12 +1201,9 @@ local function waitForTimerZero(timeout)
         if label and label.Parent then
             attach(label)
 
-            -- Also poll as a backup in case an executor/game implementation
-            -- does not deliver the property-changed signal.
-            if isTargetTime(label.Text) then
-                triggered = true
-                break
-            end
+            -- Backup polling in case the game mutates the Text in a way that
+            -- doesn't emit the expected property signal.
+            checkText(label.Text)
         else
             attachedLabel = nil
 
@@ -1195,7 +1225,6 @@ local function waitForTimerZero(timeout)
 
     return triggered
 end
-
 
 local function teleportFromDoorR(directionVector, seconds)
     local base = getDoorRCFrame()
@@ -1563,7 +1592,7 @@ local function gamePhase()
         return true
     end
 
-    -- 6) Quando o Time chegar a 00m 02s, mesmo que o texto mude imediatamente depois:
+    -- 6) Quando o Time chegar a 00m 02s, mesmo que o Text tenha RichText ou mude imediatamente depois:
     -- frente -> volta DoorR -> trás -> volta -> direita -> volta -> esquerda -> volta.
     -- Cada posição lateral permanece por exatamente 0.50s.
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
