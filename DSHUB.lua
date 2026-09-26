@@ -776,36 +776,41 @@ end
 
 local function getExactFinalPrompt()
     local finalDoor = getFinalDoor()
-    local command = finalDoor and finalDoor:FindFirstChild("Command")
-    local commandButton = command and command:FindFirstChild("CommandButton")
-    local holder = commandButton and commandButton:FindFirstChild("Prompt")
+    if not finalDoor then
+        return nil
+    end
 
-    if holder then
-        if holder:IsA("ProximityPrompt") then
-            return holder
+    -- Exact hierarchy shown in the screenshots:
+    -- FinalDoor > Command > CommandButton > Prompt > ProximityPrompt
+    local command = finalDoor:FindFirstChild("Command")
+    local commandButton = command and command:FindFirstChild("CommandButton")
+    local promptFolder = commandButton and commandButton:FindFirstChild("Prompt")
+
+    if promptFolder then
+        if promptFolder:IsA("ProximityPrompt") then
+            return promptFolder
         end
 
-        local prompt = holder:FindFirstChildOfClass("ProximityPrompt")
+        local prompt = promptFolder:FindFirstChildOfClass("ProximityPrompt")
         if prompt then
             return prompt
         end
 
-        local descendants = holder:GetDescendants()
-        for _, object in ipairs(descendants) do
+        for _, object in ipairs(promptFolder:GetDescendants()) do
             if object:IsA("ProximityPrompt") then
                 return object
             end
         end
     end
 
-    -- Fallback restricted to FinalDoor, so unrelated prompts are never fired.
-    if finalDoor then
-        for _, object in ipairs(finalDoor:GetDescendants()) do
-            if object:IsA("ProximityPrompt") then
-                return object
-            end
+    -- Strict fallback only inside FinalDoor.
+    for _, object in ipairs(finalDoor:GetDescendants()) do
+        if object:IsA("ProximityPrompt") then
+            return object
         end
     end
+
+    return nil
 end
 
 local function getDoorRCFrame()
@@ -881,46 +886,48 @@ local function getPromptActivationCFrame(prompt)
     )
 end
 
+local getTimerLabel
+local parseTimerText
+
 local function fireFinalDoorPrompt()
-    local prompt = waitForExactFinalPrompt(12)
-    if not prompt then
-        return false
-    end
-
-    local timerBefore = getTimerLabel()
-    local beforeText = timerBefore and tostring(timerBefore.Text) or ""
-    local beforeValue = timerBefore and parseTimerText(timerBefore.Text) or nil
-
-    -- Reposiciona no prompt exato para evitar falha de distância.
-    local activationCFrame = getPromptActivationCFrame(prompt)
-    if activationCFrame then
-        teleportCFrame(activationCFrame)
-    end
-
-    local deadline = os.clock() + 6
+    local deadline = os.clock() + 15
+    local prompt
 
     while current() and os.clock() < deadline do
         prompt = getExactFinalPrompt()
 
         if prompt and prompt.Parent then
+            break
+        end
+
+        task.wait(0.20)
+    end
+
+    if not prompt or not prompt.Parent then
+        return false
+    end
+
+    -- DoorR is the intended position. Re-read the prompt on every retry.
+    for attempt = 1, 15 do
+        if not current() then
+            return false
+        end
+
+        prompt = getExactFinalPrompt()
+
+        if prompt and prompt.Parent then
+            -- Make the prompt interactable locally when possible.
+            pcall(function()
+                prompt.Enabled = true
+            end)
+
             if type(fireproximityprompt) == "function" then
-                -- Primeira tentativa: assinatura simples.
-                pcall(function()
-                    fireproximityprompt(prompt)
-                end)
-
-                -- Segunda tentativa: assinaturas comuns de executores.
-                pcall(function()
-                    fireproximityprompt(prompt, 1, true)
-                end)
-
-                -- Terceira tentativa: repetir o disparo uma vez.
-                pcall(function()
-                    fireproximityprompt(prompt)
-                end)
+                pcall(fireproximityprompt, prompt)
+                pcall(fireproximityprompt, prompt, 1, true)
+                pcall(fireproximityprompt, prompt, 2, true)
             end
 
-            -- Fallback nativo do ProximityPrompt.
+            -- Also invoke the prompt's hold interface.
             pcall(function()
                 local oldDuration = prompt.HoldDuration
                 prompt.HoldDuration = 0
@@ -933,21 +940,11 @@ local function fireFinalDoorPrompt()
 
         task.wait(0.25)
 
-        -- Verifica se o temporizador realmente foi ativado.
-        local timerAfter = getTimerLabel()
-        if timerAfter then
-            local afterText = tostring(timerAfter.Text)
-            local afterValue = parseTimerText(afterText)
-
-            if afterValue and afterValue > 0 then
-                return true
-            end
-
-            if afterText ~= "" and afterText ~= beforeText then
-                return true
-            end
-
-            if beforeValue and afterValue and afterValue ~= beforeValue then
+        -- The timer is the confirmation signal, not pcall() success.
+        local label = getTimerLabel()
+        if label then
+            local remaining = parseTimerText(label.Text)
+            if remaining and remaining > 0 then
                 return true
             end
         end
@@ -958,8 +955,7 @@ local function fireFinalDoorPrompt()
     return false
 end
 
-
-local function getTimerLabel()
+getTimerLabel = function()
     local finalDoor = getFinalDoor()
     if not finalDoor then
         return nil
@@ -994,7 +990,7 @@ local function getTimerLabel()
     end
 end
 
-local function parseTimerText(text)
+parseTimerText = function(text)
     text = tostring(text or "")
 
     -- Screenshot format: "2m 00s".
