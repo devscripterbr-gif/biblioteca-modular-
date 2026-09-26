@@ -462,7 +462,7 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
--- Teleporte Sincronizado com opção de Trava
+-- Teleporte Direto Sincronizado
 function teleports:Move(destination, anchorAfter)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
@@ -487,17 +487,9 @@ function teleports:Move(destination, anchorAfter)
 
         character:PivotTo(destination)
         root.CFrame = destination
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
 
-        -- Aguarda replicação do CFrame para o servidor
-        for _ = 1, 5 do
-            if not current() then break end
-            root.CFrame = destination
-            root.AssemblyLinearVelocity = Vector3.zero
-            root.AssemblyAngularVelocity = Vector3.zero
-            RunService.Heartbeat:Wait()
-        end
-
-        -- Se solicitado, ancora no destino final (ex: dentro da DoorR)
         if anchorAfter and root and root.Parent then
             root.Anchored = true
         end
@@ -688,20 +680,15 @@ local function runDoorRSideTeleports()
     local base = getDoorRCFrame()
     if not base then return false end
 
-    -- Apenas o primeiro deslocamento (Frente)
+    -- Apenas 1 único deslocamento para frente
     local offsetDir = Vector3.new(0, 0, -10)
     local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
     local targetCFrame = CFrame.new(targetPosition) * base.Rotation
 
     print("[DS HUB] Teleporte único de vitória no servidor...")
     
-    -- Move desancorado para registrar no servidor
-    teleportCFrame(targetCFrame, false)
-    task.wait(0.50)
-
-    base = getDoorRCFrame() or base
-    teleportCFrame(base, true)
-    task.wait(0.10)
+    -- Teleporta uma única vez para a posição final e ancora
+    teleportCFrame(targetCFrame, true)
 
     return true
 end
@@ -837,7 +824,7 @@ local function gamePhase()
 
     if not current() then return true end
 
-    -- 6) Executa o teleporte único de vitória
+    -- 6) Executa o teleporte único e direto de vitória
     writeSetting(PHASE_KEY, "DoorRSideTeleport")
     runDoorRSideTeleports()
 
