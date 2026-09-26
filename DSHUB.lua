@@ -1086,17 +1086,50 @@ end
 local function waitForTimerZero(timeout)
     local deadline = os.clock() + (timeout or 180)
 
+    -- The map starts with something like "2m 00s".
+    -- When the countdown reaches 0, the Text of "Time" disappears instead
+    -- of becoming "0s", so we must remember that a real countdown existed
+    -- and then treat the disappearance/blank text as the zero signal.
+    local countdownSeen = false
+    local lastRemaining = nil
+    local missingSince = nil
+
     while current() and os.clock() < deadline do
         local label = getTimerLabel()
 
-        if label then
-            local remaining = parseTimerText(label.Text)
-            if remaining ~= nil and remaining <= 0 then
+        if label and label.Parent then
+            local text = tostring(label.Text or "")
+            local remaining = parseTimerText(text)
+
+            if remaining ~= nil then
+                countdownSeen = true
+                lastRemaining = remaining
+                missingSince = nil
+
+                -- Handles games/frames where the value briefly exposes 0.
+                if remaining <= 0 then
+                    return true
+                end
+            elseif countdownSeen and text == "" then
+                -- The UI object exists, but its Text was cleared at 0.
+                missingSince = missingSince or os.clock()
+
+                if os.clock() - missingSince >= 0.20 then
+                    return true
+                end
+            else
+                missingSince = nil
+            end
+        elseif countdownSeen then
+            -- The "Time" TextLabel itself can disappear when the border opens.
+            missingSince = missingSince or os.clock()
+
+            if os.clock() - missingSince >= 0.20 then
                 return true
             end
         end
 
-        task.wait(0.1)
+        task.wait(0.05)
     end
 
     return false
@@ -1440,7 +1473,7 @@ local function gamePhase()
     end
 
     -- 5) Não usa um timer interno de 2 minutos.
-    -- O cronômetro oficial é o TextLabel "Time" do mapa.
+    -- O cronômetro oficial é o TextLabel "Time" do mapa. Quando ele some em 0, isso confirma a abertura.
     writeSetting(PHASE_KEY, "WaitingTime")
 
     if not waitForTimerZero(180) then
