@@ -1026,14 +1026,12 @@ getTimerLabel = function()
         return nil
     end
 
-    -- Exact path shown in the Explorer screenshots:
-    -- FinalDoor > Command > Screen > SurfaceGui > Frame > Timer > Time
-    local command = finalDoor:FindFirstChild("Command")
-    local screen = command and command:FindFirstChild("Screen")
-    local surfaceGui = screen and screen:FindFirstChild("SurfaceGui")
-    local frame = surfaceGui and surfaceGui:FindFirstChild("Frame")
-    local timer = frame and frame:FindFirstChild("Timer")
-    local timeLabel = timer and timer:FindFirstChild("Time")
+    -- Exact path from the newest Explorer screenshot:
+    -- FinalDoor > Timer > SurfaceGui > Timer > Time
+    local timerModel = finalDoor:FindFirstChild("Timer")
+    local surfaceGui = timerModel and timerModel:FindFirstChild("SurfaceGui")
+    local timerFrame = surfaceGui and surfaceGui:FindFirstChild("Timer")
+    local timeLabel = timerFrame and timerFrame:FindFirstChild("Time")
 
     if timeLabel
         and (timeLabel:IsA("TextLabel")
@@ -1043,7 +1041,7 @@ getTimerLabel = function()
         return timeLabel
     end
 
-    -- Fallback: only search the same FinalDoor for an object named Time.
+    -- Strict fallback inside FinalDoor: only a GUI object named "Time".
     for _, object in ipairs(finalDoor:GetDescendants()) do
         if object.Name == "Time"
             and (object:IsA("TextLabel")
@@ -1053,6 +1051,8 @@ getTimerLabel = function()
             return object
         end
     end
+
+    return nil
 end
 
 parseTimerText = function(text)
@@ -1108,48 +1108,17 @@ local function waitForTimerZero(timeout)
                 lastRemaining = remaining
                 missingSince = nil
 
-                -- Handles games/frames where the value briefly exposes 0.
-                if remaining <= 0 then
-                    return true
-                end
-
-            elseif countdownSeen and text == "" then
-                -- The UI object exists, but its Text was cleared at 0.
-                missingSince = missingSince or os.clock()
-
-                if os.clock() - missingSince >= 0.20 then
-                    return true
-                end
-
-            elseif countdownSeen and label:IsA("GuiObject") and not label.Visible then
-                -- In some rounds the Time object stays in Explorer but its
-                -- TextLabel is simply hidden when the border opens.
-                missingSince = missingSince or os.clock()
-
-                if os.clock() - missingSince >= 0.20 then
+                -- Start the side-teleport sequence at 0m 02s.
+                -- This happens before the Time text disappears at 0.
+                if remaining <= 2 then
                     return true
                 end
 
             else
+                -- Ignore blank/hidden states here. The trigger is intentionally
+                -- based on the readable countdown reaching 0m 02s.
                 missingSince = nil
             end
-
-        elseif countdownSeen then
-            -- The "Time" TextLabel itself can disappear when the border opens.
-            missingSince = missingSince or os.clock()
-
-            if os.clock() - missingSince >= 0.20 then
-                return true
-            end
-        end
-
-        -- Safety fallback: once a genuine 2-minute countdown has been seen,
-        -- never wait forever if the UI stops updating. Allow a small margin.
-        if countdownSeen
-            and countdownStartedAt
-            and os.clock() - countdownStartedAt >= 122
-        then
-            return true
         end
 
         task.wait(0.05)
@@ -1513,7 +1482,7 @@ local function gamePhase()
     end
 
     -- 5) Não usa um timer interno de 2 minutos.
-    -- O cronômetro oficial é o TextLabel "Time" do mapa. Quando ele some em 0, isso confirma a abertura.
+    -- O cronômetro oficial é FinalDoor > Timer > SurfaceGui > Timer > Time. O processo lateral começa em 0m 02s.
     writeSetting(PHASE_KEY, "WaitingTime")
 
     if not waitForTimerZero(180) then
@@ -1524,7 +1493,7 @@ local function gamePhase()
         return true
     end
 
-    -- 6) Quando o Time chegar a 0:
+    -- 6) Quando o Time chegar a 0m 02s:
     -- frente -> volta DoorR -> trás -> volta -> direita -> volta -> esquerda -> volta.
     -- Cada posição lateral permanece por exatamente 0.50s.
     writeSetting(PHASE_KEY, "DoorRSideTeleports")
