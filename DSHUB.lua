@@ -144,6 +144,7 @@ local frozenHumanoid = nil
 local frozenRoot = nil
 local frozenValues = nil
 local frozenControls = nil
+local teleporting = false
 
 local function getPlayerControls()
     local playerScripts = player:FindFirstChild("PlayerScripts")
@@ -190,7 +191,10 @@ local function freezePlayer()
             humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
         end)
 
-        root.Anchored = false
+        if not teleporting then
+            root.Anchored = true
+        end
+
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
 
@@ -226,7 +230,10 @@ local function freezePlayer()
         humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
     end)
 
-    root.Anchored = false
+    if not teleporting then
+        root.Anchored = true
+    end
+
     root.AssemblyLinearVelocity = Vector3.zero
     root.AssemblyAngularVelocity = Vector3.zero
 
@@ -290,7 +297,7 @@ player.CharacterAdded:Connect(function(character)
     end)
 end)
 
--- Loop de controle e paralisia do personagem
+-- Loop principal: Ancara somente quando NÃO estiver teleportando
 RunService.Heartbeat:Connect(function()
     if not enabled or not frozenHumanoid or not frozenHumanoid.Parent then
         return
@@ -308,7 +315,10 @@ RunService.Heartbeat:Connect(function()
         or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
 
     if root then
-        root.Anchored = false
+        if not teleporting then
+            root.Anchored = true
+        end
+
         root.AssemblyLinearVelocity = Vector3.zero
         root.AssemblyAngularVelocity = Vector3.zero
     end
@@ -321,7 +331,7 @@ RunService.Heartbeat:Connect(function()
 end)
 
 -- ----------------------------------------------------------
--- Noclip System (Permite entrar na DoorR sem colisões)
+-- Noclip System
 -- ----------------------------------------------------------
 RunService.Stepped:Connect(function()
     if not enabled then return end
@@ -496,6 +506,7 @@ function teleports:GetEndPromptDestination(prompt, direction)
     )
 end
 
+-- Teleporte com controle dinâmico de Anchored
 function teleports:Move(destination)
     if not current() or typeof(destination) ~= "CFrame" then
         return false
@@ -509,27 +520,40 @@ function teleports:Move(destination)
         return false
     end
 
+    -- Sinaliza o início do teleporte para liberar a trava do Heartbeat
+    teleporting = true
+    root.Anchored = false
+    RunService.Heartbeat:Wait()
+
     local ok = pcall(function()
-        root.Anchored = false
-        
         if humanoid.SeatPart then
             humanoid.Sit = false
             humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
             RunService.Heartbeat:Wait()
         end
 
+        -- Aplica a nova posição desancorado
         character:PivotTo(destination)
         root.CFrame = destination
 
-        for _ = 1, 8 do
+        -- Aguarda replicação da física para o servidor
+        for _ = 1, 6 do
             if not current() then break end
             root.CFrame = destination
             root.AssemblyLinearVelocity = Vector3.zero
             root.AssemblyAngularVelocity = Vector3.zero
-            RunService.Stepped:Wait()
+            RunService.Heartbeat:Wait()
         end
     end)
 
+    -- Re-ancora o personagem e encerra o modo teleporte
+    if enabled and root and root.Parent then
+        root.Anchored = true
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    teleporting = false
     return ok
 end
 
