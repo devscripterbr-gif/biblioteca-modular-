@@ -248,13 +248,6 @@ function DSHubLibrary.Init(options)
     CloseBtn.Font = Enum.Font.GothamBold
     CloseBtn.TextSize = 12
 
-    CloseBtn.MouseButton1Click:Connect(function() 
-        if onCloseCallback then onCloseCallback() end
-        createTween(MainContainer, 0.25, {Size = UDim2.new(0, 0, 0, 0)}, Enum.EasingStyle.Back, Enum.EasingDirection.In):Play()
-        task.wait(0.25)
-        ScreenGui:Destroy()
-    end)
-
     local isMinimized = false
     local normalSize = UDim2.new(0, 400, 0, 250)
     local compactSize = UDim2.new(0, 170, 0, 38)
@@ -534,10 +527,6 @@ function DSHubLibrary.Init(options)
         table.insert(Window.Tabs, TabElements)
         return TabElements
     end
-
-    PlayIntro(function()
-        MainContainer.Visible = true
-    end)
 
     -- DS HUB v1.0 public runtime.
     -- Init() returns this Window object directly.
