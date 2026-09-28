@@ -1,7 +1,6 @@
 -- ==========================================================
 -- DS HUB | Anime Dice / Gaming Spirit
--- DSHUB.lua
--- Hub.lua continua sendo carregado do GitHub original.
+-- DSHUB.lua - versão corrigida
 -- ==========================================================
 
 local HUB_URL = "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/refs/heads/main/Hub.lua"
@@ -13,36 +12,34 @@ local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 local env = (getgenv and getgenv()) or _G
 
 -- ==========================================================
--- CARREGA O HUB OFICIAL DO GITHUB
+-- CARREGA A UI
 -- ==========================================================
 
 local function loadHub()
-    local okHttp, source = pcall(function()
+    local ok, source = pcall(function()
         return game:HttpGet(HUB_URL .. "?cb=" .. tostring(os.time()))
     end)
 
-    if not okHttp or type(source) ~= "string" then
-        error("[DS HUB] Não foi possível carregar o Hub.lua: " .. tostring(source))
+    if not ok or type(source) ~= "string" then
+        error("[DS HUB] Falha ao baixar Hub.lua: " .. tostring(source))
     end
 
     if type(loadstring) ~= "function" then
-        error("[DS HUB] loadstring não está disponível neste executor.")
+        error("[DS HUB] Este executor não possui loadstring.")
     end
 
-    local fn, compileError = loadstring(source)
-
+    local fn, err = loadstring(source)
     if not fn then
-        error("[DS HUB] Hub.lua não compilou: " .. tostring(compileError))
+        error("[DS HUB] Hub.lua não compilou: " .. tostring(err))
     end
 
     local okRun, library = pcall(fn)
-
     if not okRun then
-        error("[DS HUB] Erro ao executar Hub.lua: " .. tostring(library))
+        error("[DS HUB] Erro no Hub.lua: " .. tostring(library))
     end
 
     if type(library) ~= "table" or type(library.Init) ~= "function" then
-        error("[DS HUB] Hub.lua não retornou uma biblioteca válida.")
+        error("[DS HUB] Biblioteca inválida.")
     end
 
     return library
@@ -50,23 +47,21 @@ end
 
 local Library = loadHub()
 
--- A UI é criada antes de resolver qualquer módulo do jogo.
 local Window = Library.Init({
     Name = "DS Hub",
-    Version = "AD v1",
+    Version = "AD v2",
     ConfigFile = "DSHub_AnimeDice_Config.json",
 })
 
 env.DSHUB_CURRENT_WINDOW = Window
 
--- API confirmada do Hub.lua usado pelo projeto:
--- CreateTab(nome, ícone)
--- CreateToggle(id, estadoInicial, callback)
 local MainTab = Window:CreateTab("Anime Dice", "🎲")
 
 -- ==========================================================
 -- ESTADO
 -- ==========================================================
+
+local running = true
 
 local loops = {
     BuyBestDice = false,
@@ -77,28 +72,24 @@ local loops = {
     SellAll = false,
 }
 
-local running = true
-
 -- ==========================================================
 -- REFERÊNCIAS
 -- ==========================================================
 
 local Network
-local RollService
+local Framework
+local Features
+
 local RollRE
 local SetAutoRollRemote
 
-local PlotService
 local PlotRE
 local CollectBalanceRemote
 local EquipBestRemote
 
-local RebirthService
 local RebirthRE
 local RebirthRemote
 
-local Framework
-local Features
 local DataControllerModule
 
 local Packages
@@ -117,142 +108,98 @@ local BuyUpgradeRemote
 local SellUtilModule
 local SellUtil
 
+local resolving = false
+
 -- ==========================================================
--- RESOLVE DOS OBJETOS DO JOGO
+-- UTILITÁRIOS
 -- ==========================================================
 
-local function resolveServices()
-    if not running then
-        return
+local function findChild(parent, name)
+    if not parent then
+        return nil
     end
 
-    Network = Network or ReplicatedStorage:FindFirstChild("Network")
+    local ok, result = pcall(function()
+        return parent:FindFirstChild(name)
+    end)
 
-    if Network then
-        RollService = RollService or Network:FindFirstChild("RollService")
-        RollRE = RollRE or (RollService and RollService:FindFirstChild("RE"))
-        SetAutoRollRemote = SetAutoRollRemote
-            or (RollRE and RollRE:FindFirstChild("SetAutoRoll"))
-
-        PlotService = PlotService or Network:FindFirstChild("PlotService")
-        PlotRE = PlotRE or (PlotService and PlotService:FindFirstChild("RE"))
-        CollectBalanceRemote = CollectBalanceRemote
-            or (PlotRE and PlotRE:FindFirstChild("CollectBalance"))
-        EquipBestRemote = EquipBestRemote
-            or (PlotRE and PlotRE:FindFirstChild("EquipBest"))
-
-        RebirthService = RebirthService
-            or Network:FindFirstChild("RebirthService")
-        RebirthRE = RebirthRE
-            or (RebirthService and RebirthService:FindFirstChild("RE"))
-        RebirthRemote = RebirthRemote
-            or (RebirthRE and RebirthRE:FindFirstChild("Rebirth"))
-    end
-
-    Framework = Framework or ReplicatedStorage:FindFirstChild("Framework")
-    Features = Features or (Framework and Framework:FindFirstChild("Features"))
-
-    if Features then
-        local dataFolder = Features:FindFirstChild("Data")
-        DataControllerModule = DataControllerModule
-            or (dataFolder and dataFolder:FindFirstChild("DataController"))
-
-        UpgradesFolder = UpgradesFolder or Features:FindFirstChild("Upgrades")
-        UpgradeModule = UpgradeModule
-            or (UpgradesFolder and UpgradesFolder:FindFirstChild("Upgrades"))
-
-        local selling = Features:FindFirstChild("Selling")
-        SellUtilModule = SellUtilModule
-            or (selling and selling:FindFirstChild("SellUtil"))
-    end
-
-    Packages = Packages or ReplicatedStorage:FindFirstChild("Packages")
-    PackageNetwork = PackageNetwork
-        or (Packages and Packages:FindFirstChild("Network"))
-    ClientCommModule = ClientCommModule
-        or (PackageNetwork and PackageNetwork:FindFirstChild("ClientComm"))
-
-    if ClientCommModule and not ClientComm then
-        local ok, module = pcall(require, ClientCommModule)
-
-        if ok and type(module) == "table" and type(module.new) == "function" then
-            local okNew, comm = pcall(function()
-                return module.new(PackageNetwork)
-            end)
-
-            if okNew and comm then
-                ClientComm = comm
-
-                pcall(function()
-                    DiceShopService = ClientComm:GetSignal("DiceShopService")
-
-                    if DiceShopService then
-                        BuyDiceRemote = DiceShopService:GetSignal("BuyDice")
-                        EquipDiceRemote = DiceShopService:GetSignal("EquipDice")
-                    end
-                end)
-            end
-        end
-    end
-
-    if UpgradeModule and not BuyUpgradeRemote then
-        local ok, module = pcall(require, UpgradeModule)
-
-        if ok and module then
-            pcall(function()
-                local client = module.Client
-
-                if client and type(client.GetSignal) == "function" then
-                    BuyUpgradeRemote = client:GetSignal(Network, "BuyUpgrade")
-                end
-            end)
-
-            if not BuyUpgradeRemote and type(module.GetSignal) == "function" then
-                pcall(function()
-                    BuyUpgradeRemote = module:GetSignal("BuyUpgrade")
-                end)
-            end
-        end
-    end
-
-    if SellUtilModule and not SellUtil then
-        pcall(function()
-            SellUtil = require(SellUtilModule)
-        end)
-    end
+    return ok and result or nil
 end
 
--- Resolver em segundo plano, sem bloquear a criação dos toggles.
-task.spawn(function()
-    local deadline = os.clock() + 10
+local function getMoney(data)
+    if type(data) ~= "table" then
+        return nil
+    end
 
-    while running and os.clock() < deadline do
-        resolveServices()
+    for _, key in ipairs({"Money", "Cash", "Coins", "Balance"}) do
+        local value = tonumber(data[key])
+        if value then
+            return value
+        end
+    end
 
-        if Network then
-            break
+    return nil
+end
+
+-- Aceita RemoteEvent, RemoteFunction e os wrappers usados pelo ClientComm.
+local function invokeRemote(remote, ...)
+    if not remote then
+        return false, "remote inexistente"
+    end
+
+    local args = table.pack(...)
+
+    local ok, result = pcall(function()
+        if typeof(remote) == "Instance" then
+            if remote:IsA("RemoteEvent") then
+                remote:FireServer(table.unpack(args, 1, args.n))
+                return true
+            elseif remote:IsA("RemoteFunction") then
+                return remote:InvokeServer(table.unpack(args, 1, args.n))
+            end
         end
 
-        task.wait(0.15)
-    end
-end)
+        if type(remote) == "function" then
+            return remote(table.unpack(args, 1, args.n))
+        end
 
--- ==========================================================
--- DATA
--- ==========================================================
+        if type(remote.Fire) == "function" then
+            return remote:Fire(table.unpack(args, 1, args.n))
+        end
+
+        if type(remote.Invoke) == "function" then
+            return remote:Invoke(table.unpack(args, 1, args.n))
+        end
+
+        if type(remote.Call) == "function" then
+            return remote:Call(table.unpack(args, 1, args.n))
+        end
+
+        if type(remote.Send) == "function" then
+            return remote:Send(table.unpack(args, 1, args.n))
+        end
+
+        error("objeto não possui Fire/Invoke/Call/Send")
+    end)
+
+    if ok then
+        return true, result
+    end
+
+    return false, result
+end
 
 local function getDataController()
-    resolveServices()
-
     if not DataControllerModule then
         return nil
     end
 
     local ok, controller = pcall(require, DataControllerModule)
-
-    if ok then
+    if ok and controller then
         return controller
     end
+
+    return nil
 end
 
 local function getAllPlayerData()
@@ -272,86 +219,301 @@ local function getAllPlayerData()
 end
 
 -- ==========================================================
+-- RESOLUÇÃO DOS SERVIÇOS
+-- ==========================================================
+
+local function resolveClientComm()
+    if ClientComm then
+        return ClientComm
+    end
+
+    if not ClientCommModule then
+        return nil
+    end
+
+    local ok, module = pcall(require, ClientCommModule)
+    if not ok or type(module) ~= "table" or type(module.new) ~= "function" then
+        return nil
+    end
+
+    -- O ClientComm pertence a Packages.Network. O script antigo
+    -- usava Network em Sell All, o que fazia essa parte falhar.
+    local constructors = {
+        PackageNetwork,
+        ReplicatedStorage,
+        Network,
+    }
+
+    for _, parent in ipairs(constructors) do
+        if parent then
+            local okNew, comm = pcall(function()
+                return module.new(parent)
+            end)
+
+            if okNew and comm then
+                ClientComm = comm
+                return comm
+            end
+        end
+    end
+
+    return nil
+end
+
+local function resolveServices()
+    if not running or resolving then
+        return
+    end
+
+    resolving = true
+
+    pcall(function()
+        Network = Network or findChild(ReplicatedStorage, "Network")
+
+        if Network then
+            local rollService = findChild(Network, "RollService")
+            local rollFolder = findChild(rollService, "RE")
+            RollRE = RollRE or rollFolder
+
+            SetAutoRollRemote = SetAutoRollRemote
+                or findChild(rollFolder, "SetAutoRoll")
+
+            local plotService = findChild(Network, "PlotService")
+            PlotRE = PlotRE or findChild(plotService, "RE")
+
+            CollectBalanceRemote = CollectBalanceRemote
+                or findChild(PlotRE, "CollectBalance")
+
+            EquipBestRemote = EquipBestRemote
+                or findChild(PlotRE, "EquipBest")
+
+            local rebirthService = findChild(Network, "RebirthService")
+            RebirthRE = RebirthRE or findChild(rebirthService, "RE")
+
+            RebirthRemote = RebirthRemote
+                or findChild(RebirthRE, "Rebirth")
+        end
+
+        Framework = Framework or findChild(ReplicatedStorage, "Framework")
+        Features = Features or findChild(Framework, "Features")
+
+        if Features then
+            local dataFolder = findChild(Features, "Data")
+            DataControllerModule = DataControllerModule
+                or findChild(dataFolder, "DataController")
+
+            UpgradesFolder = UpgradesFolder or findChild(Features, "Upgrades")
+            UpgradeModule = UpgradeModule
+                or findChild(UpgradesFolder, "Upgrades")
+
+            local selling = findChild(Features, "Selling")
+            SellUtilModule = SellUtilModule
+                or findChild(selling, "SellUtil")
+        end
+
+        Packages = Packages or findChild(ReplicatedStorage, "Packages")
+        PackageNetwork = PackageNetwork
+            or findChild(Packages, "Network")
+
+        ClientCommModule = ClientCommModule
+            or findChild(PackageNetwork, "ClientComm")
+
+        local comm = resolveClientComm()
+
+        if comm then
+            pcall(function()
+                DiceShopService = DiceShopService
+                    or comm:GetSignal("DiceShopService")
+
+                if DiceShopService then
+                    BuyDiceRemote = BuyDiceRemote
+                        or DiceShopService:GetSignal("BuyDice")
+
+                    EquipDiceRemote = EquipDiceRemote
+                        or DiceShopService:GetSignal("EquipDice")
+                end
+            end)
+        end
+
+        -- Primeiro tenta a API do módulo de upgrades.
+        if UpgradeModule and not BuyUpgradeRemote then
+            local ok, module = pcall(require, UpgradeModule)
+
+            if ok and module then
+                pcall(function()
+                    local client = module.Client
+
+                    if client and type(client.GetSignal) == "function" then
+                        BuyUpgradeRemote = client:GetSignal(Network, "BuyUpgrade")
+                    end
+                end)
+
+                if not BuyUpgradeRemote and type(module.GetSignal) == "function" then
+                    pcall(function()
+                        BuyUpgradeRemote = module:GetSignal("BuyUpgrade")
+                    end)
+                end
+            end
+        end
+
+        -- Fallback para uma RemoteEvent/RemoteFunction tradicional.
+        if not BuyUpgradeRemote and Network then
+            local upgradeService = findChild(Network, "UpgradeService")
+                or findChild(Network, "UpgradesService")
+
+            local upgradeRE = findChild(upgradeService, "RE")
+
+            BuyUpgradeRemote = findChild(upgradeRE, "BuyUpgrade")
+                or findChild(upgradeService, "BuyUpgrade")
+        end
+
+        if SellUtilModule and not SellUtil then
+            pcall(function()
+                SellUtil = require(SellUtilModule)
+            end)
+        end
+    end)
+
+    resolving = false
+end
+
+task.spawn(function()
+    local deadline = os.clock() + 15
+
+    while running and os.clock() < deadline do
+        resolveServices()
+
+        if Network and DataControllerModule then
+            break
+        end
+
+        task.wait(0.2)
+    end
+end)
+
+-- ==========================================================
 -- AUTO ROLL
 -- ==========================================================
 
 local function setAutoRoll(value)
     resolveServices()
 
-    if not SetAutoRollRemote then
+    local ok = invokeRemote(SetAutoRollRemote, value == true)
+
+    if not ok then
         return false
     end
 
-    return pcall(function()
-        SetAutoRollRemote:FireServer(value == true)
-    end)
+    return true
 end
 
 -- ==========================================================
 -- BUY BEST DICE
 -- ==========================================================
 
-local function buyBestDiceOnce()
-    resolveServices()
-
-    if not BuyDiceRemote or not EquipDiceRemote then
-        return false
+local function getDiceTables(data)
+    if type(data) ~= "table" then
+        return {}
     end
 
-    local data = getAllPlayerData()
+    local result = {}
 
-    if type(data) ~= "table" or type(data.OwnedDice) ~= "table" then
-        return false
+    -- Preferências: dados de loja/itens disponíveis.
+    for _, key in ipairs({
+        "DiceShop",
+        "ShopDice",
+        "Dice",
+        "AvailableDice",
+        "OwnedDice",
+    }) do
+        if type(data[key]) == "table" then
+            result[#result + 1] = data[key]
+        end
     end
 
+    return result
+end
+
+local function buildDiceCandidates(data)
     local candidates = {}
+    local seen = {}
 
-    for name, diceData in pairs(data.OwnedDice) do
-        if type(diceData) == "table" then
-            candidates[#candidates + 1] = {
-                name = name,
-                data = diceData,
-            }
+    for _, diceTable in ipairs(getDiceTables(data)) do
+        for name, diceData in pairs(diceTable) do
+            if type(diceData) == "table" and not seen[name] then
+                local price = tonumber(
+                    diceData.price
+                    or diceData.Price
+                    or diceData.cost
+                    or diceData.Cost
+                )
+
+                local luck = tonumber(
+                    diceData.luck
+                    or diceData.Luck
+                    or diceData.multiplier
+                    or diceData.Multiplier
+                    or diceData.chance
+                ) or 0
+
+                local owned = diceData.owned
+                if owned == nil then
+                    owned = diceData.Owned
+                end
+
+                candidates[#candidates + 1] = {
+                    name = tostring(name),
+                    price = price,
+                    luck = luck,
+                    owned = owned == true,
+                }
+
+                seen[name] = true
+            end
         end
     end
 
     table.sort(candidates, function(a, b)
-        local aLuck = tonumber(a.data and a.data.luck) or 0
-        local bLuck = tonumber(b.data and b.data.luck) or 0
-
-        if aLuck ~= bLuck then
-            return aLuck > bLuck
+        if a.luck ~= b.luck then
+            return a.luck > b.luck
         end
 
-        local aPrice = tonumber(a.data and a.data.price) or 0
-        local bPrice = tonumber(b.data and b.data.price) or 0
-
-        return aPrice > bPrice
+        return (a.price or 0) > (b.price or 0)
     end)
 
-    local money = tonumber(data.Money)
+    return candidates
+end
 
-    if not money then
+local function buyBestDiceOnce()
+    resolveServices()
+
+    if not BuyDiceRemote then
         return false
     end
 
+    local data = getAllPlayerData()
+    local money = getMoney(data)
+
+    if not data or not money then
+        return false
+    end
+
+    local candidates = buildDiceCandidates(data)
+
     for _, candidate in ipairs(candidates) do
-        local price = tonumber(candidate.data and candidate.data.price)
+        -- Se o jogo informa que já possui o dado, não tenta comprá-lo.
+        if not candidate.owned and candidate.price and candidate.price <= money then
+            local ok = invokeRemote(BuyDiceRemote, candidate.name)
 
-        if price and price <= money then
-            local okBuy = pcall(function()
-                BuyDiceRemote:Fire(candidate.name)
-            end)
+            if ok then
+                task.wait(0.25)
 
-            if okBuy then
-                task.wait(0.3)
+                if EquipDiceRemote then
+                    invokeRemote(EquipDiceRemote, candidate.name)
+                end
 
-                pcall(function()
-                    EquipDiceRemote:Fire(candidate.name)
-                end)
+                return true
             end
-
-            return okBuy
         end
     end
 
@@ -365,92 +527,136 @@ end
 local function collectCashOnce()
     resolveServices()
 
-    if not CollectBalanceRemote then
-        return false
-    end
-
-    return pcall(function()
-        CollectBalanceRemote:FireServer()
-    end)
+    return invokeRemote(CollectBalanceRemote)
 end
 
 -- ==========================================================
--- AUTO REBIRTH
+-- REBIRTH
 -- ==========================================================
 
 local function rebirthOnce()
     resolveServices()
 
-    if not RebirthRemote then
-        return false
-    end
-
-    return pcall(function()
-        RebirthRemote:FireServer()
-    end)
+    return invokeRemote(RebirthRemote)
 end
 
 -- ==========================================================
--- AUTO EQUIP BEST
+-- EQUIP BEST
 -- ==========================================================
 
 local function equipBestOnce()
     resolveServices()
 
-    if not EquipBestRemote then
-        return false
-    end
-
-    return pcall(function()
-        EquipBestRemote:FireServer()
-    end)
+    return invokeRemote(EquipBestRemote)
 end
 
 -- ==========================================================
 -- AUTO UPGRADE
 -- ==========================================================
 
-local function getUpgradeContainer()
-    resolveServices()
-
-    return UpgradesFolder and UpgradesFolder:FindFirstChild("Upgrades")
-end
-
-local function getUpgradePrice(upgrade)
-    if not upgrade then
+local function getUpgradePrice(value)
+    if value == nil then
         return nil
     end
 
-    local attribute = upgrade:GetAttribute("price")
-
-    if attribute ~= nil then
-        return tonumber(attribute)
+    if type(value) == "number" then
+        return value
     end
 
-    local value = upgrade:FindFirstChild("price")
-
-    if value then
-        return tonumber(value.Value)
+    if type(value) == "table" then
+        return tonumber(
+            value.price
+            or value.Price
+            or value.cost
+            or value.Cost
+        )
     end
 
-    local ok, property = pcall(function()
-        return upgrade.price
+    if typeof(value) == "Instance" then
+        local attribute = value:GetAttribute("price")
+            or value:GetAttribute("Price")
+            or value:GetAttribute("cost")
+            or value:GetAttribute("Cost")
+
+        if attribute ~= nil then
+            return tonumber(attribute)
+        end
+
+        local obj = findChild(value, "price")
+            or findChild(value, "Price")
+            or findChild(value, "cost")
+            or findChild(value, "Cost")
+
+        if obj and obj:IsA("ValueBase") then
+            return tonumber(obj.Value)
+        end
+    end
+
+    return nil
+end
+
+local function getUpgradeCandidates()
+    resolveServices()
+
+    local result = {}
+
+    -- Caso exista uma pasta real de upgrades.
+    if UpgradesFolder then
+        local container = findChild(UpgradesFolder, "Upgrades")
+
+        if container and container:IsA("Folder") then
+            for _, child in ipairs(container:GetChildren()) do
+                result[#result + 1] = {
+                    id = child.Name,
+                    object = child,
+                    price = getUpgradePrice(child),
+                }
+            end
+        end
+    end
+
+    -- Caso Upgrades seja um ModuleScript, usa os dados exportados.
+    if UpgradeModule then
+        local ok, module = pcall(require, UpgradeModule)
+
+        if ok and type(module) == "table" then
+            local source = module.Upgrades
+                or module.Data
+                or module.List
+                or module
+
+            if type(source) == "table" then
+                for id, value in pairs(source) do
+                    local price = getUpgradePrice(value)
+
+                    if price then
+                        result[#result + 1] = {
+                            id = tostring(id),
+                            object = value,
+                            price = price,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(result, function(a, b)
+        return (a.price or math.huge) < (b.price or math.huge)
     end)
 
-    if ok then
-        return tonumber(property)
-    end
+    return result
 end
 
 local function autoUpgradeOnce()
-    local folder = getUpgradeContainer()
+    resolveServices()
 
-    if not folder or not BuyUpgradeRemote then
+    if not BuyUpgradeRemote then
         return false
     end
 
     local data = getAllPlayerData()
-    local money = data and tonumber(data.Money)
+    local money = getMoney(data)
 
     if not money then
         return false
@@ -458,16 +664,19 @@ local function autoUpgradeOnce()
 
     local upgraded = false
 
-    for _, upgrade in ipairs(folder:GetChildren()) do
-        local price = getUpgradePrice(upgrade)
+    for _, upgrade in ipairs(getUpgradeCandidates()) do
+        if upgrade.price and upgrade.price <= money then
+            -- Primeiro tenta o identificador, que é o formato mais comum.
+            local ok = invokeRemote(BuyUpgradeRemote, upgrade.id)
 
-        if price and price <= money then
-            local ok = pcall(function()
-                BuyUpgradeRemote:Fire(upgrade)
-            end)
+            -- Se falhar e houver objeto, tenta o objeto como fallback.
+            if not ok and upgrade.object ~= nil then
+                ok = invokeRemote(BuyUpgradeRemote, upgrade.object)
+            end
 
             if ok then
                 upgraded = true
+                task.wait(0.08)
             end
         end
     end
@@ -482,29 +691,16 @@ end
 local function getSellService()
     resolveServices()
 
-    if not PackageNetwork or not ClientCommModule then
+    local comm = resolveClientComm()
+    if not comm then
         return nil
     end
 
-    local ok, module = pcall(require, ClientCommModule)
-
-    if not ok or type(module) ~= "table" or type(module.new) ~= "function" then
-        return nil
-    end
-
-    local okComm, comm = pcall(function()
-        return module.new(Network)
-    end)
-
-    if not okComm or not comm then
-        return nil
-    end
-
-    local okService, service = pcall(function()
+    local ok, service = pcall(function()
         return comm:GetFunction("SellService")
     end)
 
-    if okService then
+    if ok and service then
         return service
     end
 
@@ -514,32 +710,27 @@ end
 local function getInventorySlots()
     local data = getAllPlayerData()
 
-    if type(data) == "table" and type(data.Inventory) == "table" then
+    if type(data) == "table"
+        and type(data.Inventory) == "table"
+        and type(data.Inventory.Slots) == "table" then
+
         return data.Inventory.Slots
     end
 
     local inventory = player:FindFirstChild("Inventory")
-
     return inventory and inventory:FindFirstChild("Slots")
 end
 
 local function sellAllOnce()
     resolveServices()
 
-    if not SellUtil then
-        return false
-    end
-
     local sellService = getSellService()
-
     if not sellService then
         return false
     end
 
-    local sellInventory
-
-    local okFunction = pcall(function()
-        sellInventory = sellService:GetFunction("SellInventory")
+    local okFunction, sellInventory = pcall(function()
+        return sellService:GetFunction("SellInventory")
     end)
 
     if not okFunction or not sellInventory then
@@ -547,7 +738,6 @@ local function sellAllOnce()
     end
 
     local slots = getInventorySlots()
-
     if not slots then
         return false
     end
@@ -555,19 +745,46 @@ local function sellAllOnce()
     local sales = {}
     local totalUnits = 0
 
-    for _, slot in ipairs(slots) do
-        if type(slot) == "table" and slot.key ~= nil then
-            local units =
-                tonumber(slot.totalUnits)
-                or tonumber(slot.units)
+    local function addSlot(slot)
+        if type(slot) ~= "table" or slot.key == nil then
+            return
+        end
+
+        local units = tonumber(
+            slot.totalUnits
+            or slot.units
+            or slot.amount
+            or slot.Amount
+        ) or 1
+
+        if units <= 0 then
+            return
+        end
+
+        totalUnits = totalUnits + units
+
+        sales[#sales + 1] = {
+            key = slot.key,
+            totalUnits = units,
+        }
+    end
+
+    -- Corrige o caso em que Slots é um dicionário, não um array.
+    if type(slots) == "table" then
+        for _, slot in pairs(slots) do
+            addSlot(slot)
+        end
+    elseif typeof(slots) == "Instance" then
+        for _, slot in ipairs(slots:GetChildren()) do
+            local key = slot:GetAttribute("key") or slot.Name
+            local units = slot:GetAttribute("totalUnits")
+                or slot:GetAttribute("units")
                 or 1
 
-            totalUnits = totalUnits + units
-
-            sales[#sales + 1] = {
-                key = slot.key,
+            addSlot({
+                key = key,
                 totalUnits = units,
-            }
+            })
         end
     end
 
@@ -577,7 +794,9 @@ local function sellAllOnce()
 
     local summary = sales
 
-    if type(SellUtil.CreateSummary) == "function" then
+    if type(SellUtil) == "table"
+        and type(SellUtil.CreateSummary) == "function" then
+
         local okSummary, result = pcall(function()
             return SellUtil.CreateSummary({
                 sales = sales,
@@ -590,13 +809,7 @@ local function sellAllOnce()
         end
     end
 
-    return pcall(function()
-        if type(sellInventory) == "function" then
-            sellInventory(summary)
-        elseif sellInventory.InvokeServer then
-            sellInventory:InvokeServer(summary)
-        end
-    end)
+    return invokeRemote(sellInventory, summary)
 end
 
 -- ==========================================================
@@ -604,14 +817,31 @@ end
 -- ==========================================================
 
 local function startLoop(name, callback, delay)
+    if loops[name] then
+        return
+    end
+
     loops[name] = true
 
     task.spawn(function()
         while running and loops[name] and not Window.Unloaded do
-            pcall(callback)
+            local ok, err = pcall(callback)
+
+            if not ok then
+                warn("[DS HUB][" .. name .. "] " .. tostring(err))
+            end
+
             task.wait(delay)
         end
     end)
+end
+
+local function setLoop(name, value, callback, delay)
+    loops[name] = value == true
+
+    if loops[name] then
+        startLoop(name, callback, delay)
+    end
 end
 
 local function stopAll()
@@ -627,7 +857,7 @@ local function stopAll()
 end
 
 -- ==========================================================
--- TOGGLES
+-- UI
 -- ==========================================================
 
 MainTab:CreateToggle("Auto Roll", false, function(value)
@@ -635,51 +865,27 @@ MainTab:CreateToggle("Auto Roll", false, function(value)
 end)
 
 MainTab:CreateToggle("Buy Best Dice", false, function(value)
-    loops.BuyBestDice = value == true
-
-    if value then
-        startLoop("BuyBestDice", buyBestDiceOnce, 1)
-    end
+    setLoop("BuyBestDice", value, buyBestDiceOnce, 1)
 end)
 
 MainTab:CreateToggle("Collect Cash", false, function(value)
-    loops.CollectCash = value == true
-
-    if value then
-        startLoop("CollectCash", collectCashOnce, 1)
-    end
+    setLoop("CollectCash", value, collectCashOnce, 1)
 end)
 
 MainTab:CreateToggle("Auto Rebirth", false, function(value)
-    loops.AutoRebirth = value == true
-
-    if value then
-        startLoop("AutoRebirth", rebirthOnce, 1)
-    end
+    setLoop("AutoRebirth", value, rebirthOnce, 1)
 end)
 
 MainTab:CreateToggle("Auto Upgrade", false, function(value)
-    loops.AutoUpgrade = value == true
-
-    if value then
-        startLoop("AutoUpgrade", autoUpgradeOnce, 0.2)
-    end
+    setLoop("AutoUpgrade", value, autoUpgradeOnce, 0.25)
 end)
 
 MainTab:CreateToggle("Auto Equip Best", false, function(value)
-    loops.AutoEquipBest = value == true
-
-    if value then
-        startLoop("AutoEquipBest", equipBestOnce, 0.5)
-    end
+    setLoop("AutoEquipBest", value, equipBestOnce, 0.6)
 end)
 
 MainTab:CreateToggle("Sell All", false, function(value)
-    loops.SellAll = value == true
-
-    if value then
-        startLoop("SellAll", sellAllOnce, 1.5)
-    end
+    setLoop("SellAll", value, sellAllOnce, 1.5)
 end)
 
 if type(Window.OnUnload) == "function" then
