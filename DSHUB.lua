@@ -1,41 +1,30 @@
 -- ==========================================================
--- DS HUB v1.0 | RUNAWAYS | Auto Farm Credz
+-- DS HUB | Anime Dice / Gaming Spirit
+-- DSHUB.lua
 -- UI: Hub.lua
 -- ==========================================================
 
 local HUB_URL = "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/refs/heads/main/Hub.lua"
-local SCRIPT_URL = "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/refs/heads/main/DSHUB.lua"
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TeleportService = game:GetService("TeleportService")
-local RunService = game:GetService("RunService")
-
 local player = Players.LocalPlayer or Players.PlayerAdded:Wait()
-local env = getgenv and getgenv() or _G
+local env = (getgenv and getgenv()) or _G
 
--- ----------------------------------------------------------
--- Hub loader
--- ----------------------------------------------------------
 local function loadHub()
     local ok, source = pcall(function()
         return game:HttpGet(HUB_URL .. "?cb=" .. tostring(os.time()))
     end)
-
     if not ok or type(source) ~= "string" then
-        error("[DS HUB] Hub.lua: " .. tostring(source))
+        error("[DS HUB] Falha ao carregar Hub.lua: " .. tostring(source))
     end
-
     local fn, compileError = loadstring(source)
     if not fn then
         error("[DS HUB] Hub.lua não compilou: " .. tostring(compileError))
     end
-
     local ran, library = pcall(fn)
     if not ran or type(library) ~= "table" or type(library.Init) ~= "function" then
         error("[DS HUB] Hub.lua inválido.")
     end
-
     return library
 end
 
@@ -46,865 +35,563 @@ end
 local Library = loadHub()
 local Window = Library.Init({
     Name = "DS Hub",
-    Version = "v1.0",
-    ConfigFile = "DSHub_v1_0_Config.json",
+    Version = "Anime Dice",
+    ConfigFile = "DSHub_AnimeDice_Config.json",
 })
 
 env.DSHUB_CURRENT_WINDOW = Window
+local MainTab = Window:CreateTab("🎲 Anime Dice")
 
-local AutoFarmTab = Window:CreateTab("🎟️ Auto Farm")
+--[[
+    Anime Dice / Gaming Spirit
+    FUNCTION RECOVERY
 
--- ----------------------------------------------------------
--- Persistent state
--- ----------------------------------------------------------
-local ENABLED_KEY = "DSHUB_AUTOFARM_CREDZ_ENABLED"
-local PHASE_KEY = "DSHUB_AUTOFARM_CREDZ_PHASE"
+    Source: LuaObfuscator.com Alpha 0.10.9 VM payload from the uploaded file.
 
-local function readSetting(key)
-    local value
-    pcall(function()
-        value = TeleportService:GetTeleportSetting(key)
-    end)
-    if value ~= nil then
-        return value
-    end
-    return env[key]
+    This file contains the recovered game-facing functions in readable Luau.
+    The VM hides original local names, but the service/remotes, constants and
+    control flow below are reconstructed from the decoded bytecode.
+]]
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+local function waitChild(parent, name)
+    return parent and parent:WaitForChild(name)
 end
 
-local function writeSetting(key, value)
-    env[key] = value
-    pcall(function()
-        TeleportService:SetTeleportSetting(key, value)
-    end)
+local function safeCall(fn, ...)
+    return pcall(fn, ...)
 end
 
-local function getQueue()
-    if type(queue_on_teleport) == "function" then
-        return queue_on_teleport
-    end
-    if type(queueonteleport) == "function" then
-        return queueonteleport
-    end
-    if type(syn) == "table" and type(syn.queue_on_teleport) == "function" then
-        return syn.queue_on_teleport
-    end
-    if type(fluxus) == "table" and type(fluxus.queue_on_teleport) == "function" then
-        return fluxus.queue_on_teleport
+-- ================================================================
+-- Recovered service/module references
+-- ================================================================
+
+local Network = waitChild(ReplicatedStorage, "Network")
+
+local RollService = waitChild(Network, "RollService")
+local RollRE = waitChild(RollService, "RE")
+local SetAutoRoll = waitChild(RollRE, "SetAutoRoll")
+
+local PlotService = waitChild(Network, "PlotService")
+local PlotRE = waitChild(PlotService, "RE")
+local CollectBalance = waitChild(PlotRE, "CollectBalance")
+local EquipBest = waitChild(PlotRE, "EquipBest")
+
+local RebirthService = waitChild(Network, "RebirthService")
+local RebirthRE = waitChild(RebirthService, "RE")
+local Rebirth = waitChild(RebirthRE, "Rebirth")
+
+local Framework = waitChild(ReplicatedStorage, "Framework")
+local Features = waitChild(Framework, "Features")
+
+local DiceModule = waitChild(waitChild(Features, "Rolling"), "Dice")
+local DataControllerModule = waitChild(waitChild(Features, "Data"), "DataController")
+
+local Packages = waitChild(ReplicatedStorage, "Packages")
+local PackageNetwork = waitChild(Packages, "Network")
+
+local ClientCommModule = waitChild(PackageNetwork, "ClientComm")
+local ClientComm
+local DiceShopService
+local BuyDice
+local EquipDice
+
+if ClientCommModule then
+    local ok, result = pcall(require, ClientCommModule)
+    if ok and result and type(result.new) == "function" then
+        pcall(function()
+            ClientComm = result.new(PackageNetwork)
+            DiceShopService = ClientComm:GetSignal("DiceShopService")
+            BuyDice = DiceShopService:GetSignal("BuyDice")
+            EquipDice = DiceShopService:GetSignal("EquipDice")
+        end)
     end
 end
 
-local function queueResume()
-    local queue = getQueue()
-    if not queue then
+-- Upgrades signals recovered from the main chunk.
+local UpgradesFolder = waitChild(Features, "Upgrades")
+local UpgradeModule = UpgradesFolder and waitChild(UpgradesFolder, "Upgrades")
+local UpgradeClient
+local BuyUpgrade
+
+if UpgradeModule then
+    local ok, result = pcall(require, UpgradeModule)
+    if ok and result then
+        pcall(function()
+            UpgradeClient = result.Client
+            if UpgradeClient and type(UpgradeClient.GetSignal) == "function" then
+                BuyUpgrade = UpgradeClient:GetSignal(Network, "BuyUpgrade")
+            end
+        end)
+    end
+end
+
+-- Alternative shape used by some versions of the same client module.
+if not BuyUpgrade and UpgradeModule then
+    local ok, result = pcall(require, UpgradeModule)
+    if ok and result and type(result.GetSignal) == "function" then
+        pcall(function()
+            BuyUpgrade = result:GetSignal("BuyUpgrade")
+        end)
+    end
+end
+
+-- ================================================================
+-- AUTO ROLL
+-- ================================================================
+
+function SetAutoRollState(value)
+    value = value == true
+
+    if not SetAutoRoll then
         return false
     end
 
-    local code = string.format([[
-        local url = %q
-        local ok, src = pcall(function()
-            return game:HttpGet(url .. "?cb=" .. tostring(os.time()))
-        end)
-        if ok and type(src) == "string" then
-            local fn = loadstring(src)
-            if fn then
-                pcall(fn)
-            end
-        end
-    ]], SCRIPT_URL)
-
-    return pcall(queue, code)
-end
-
-local enabled = readSetting(ENABLED_KEY) == true
-local running = false
-
-local WAIT_AFTER_SERVER_CHANGE = 5
-local waitForNewServer = enabled
-    and readSetting(PHASE_KEY) == "WaitingForServerTransition"
-
-if waitForNewServer then
-    writeSetting(PHASE_KEY, "ServerLoading")
-    task.wait(WAIT_AFTER_SERVER_CHANGE)
-end
-local generation = (tonumber(env.DSHUB_CREDZ_GENERATION) or 0) + 1
-env.DSHUB_CREDZ_GENERATION = generation
-
-local function current()
-    return enabled
-        and running
-        and env.DSHUB_CREDZ_GENERATION == generation
-        and aliveWindow(Window)
-end
-
--- ----------------------------------------------------------
--- Player freeze system
--- ----------------------------------------------------------
-local frozenCharacter = nil
-local frozenHumanoid = nil
-local frozenRoot = nil
-local frozenValues = nil
-local frozenControls = nil
-
-local function getPlayerControls()
-    local playerScripts = player:FindFirstChild("PlayerScripts")
-    local playerModule = playerScripts and playerScripts:FindFirstChild("PlayerModule")
-
-    if not playerModule then
-        return nil
-    end
-
-    local ok, module = pcall(require, playerModule)
-    if not ok or not module or type(module.GetControls) ~= "function" then
-        return nil
-    end
-
-    local okControls, controls = pcall(function()
-        return module:GetControls()
-    end)
-
-    if okControls and controls then
-        return controls
-    end
-end
-
-local function freezePlayer()
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not character or not humanoid or not root then
-        return false
-    end
-
-    if frozenCharacter == character
-        and frozenHumanoid == humanoid
-        and frozenRoot == root
-    then
-        humanoid.WalkSpeed = 0
-        humanoid.AutoRotate = false
-
-        pcall(function()
-            humanoid.UseJumpPower = true
-            humanoid.JumpPower = 0
-            humanoid.JumpHeight = 0
-            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-        end)
-
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-
-        if frozenControls then
-            pcall(function() frozenControls:Disable() end)
-        end
-
-        return true
-    end
-
-    frozenCharacter = character
-    frozenHumanoid = humanoid
-    frozenRoot = root
-
-    frozenValues = {
-        WalkSpeed = humanoid.WalkSpeed,
-        AutoRotate = humanoid.AutoRotate,
-        UseJumpPower = humanoid.UseJumpPower,
-        JumpPower = humanoid.JumpPower,
-        JumpHeight = humanoid.JumpHeight,
-        JumpingEnabled = humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping),
-    }
-
-    humanoid.WalkSpeed = 0
-    humanoid.AutoRotate = false
-
-    pcall(function()
-        humanoid.UseJumpPower = true
-        humanoid.JumpPower = 0
-        humanoid.JumpHeight = 0
-        humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-    end)
-
-    root.AssemblyLinearVelocity = Vector3.zero
-    root.AssemblyAngularVelocity = Vector3.zero
-
-    frozenControls = getPlayerControls()
-    if frozenControls then
-        pcall(function() frozenControls:Disable() end)
-    end
-
-    return true
-end
-
-local function unfreezePlayer()
-    if frozenRoot and frozenRoot.Parent then
-        pcall(function()
-            frozenRoot.Anchored = false
-            frozenRoot.AssemblyLinearVelocity = Vector3.zero
-            frozenRoot.AssemblyAngularVelocity = Vector3.zero
-        end)
-    end
-
-    if frozenHumanoid and frozenHumanoid.Parent and frozenValues then
-        local h = frozenHumanoid
-        pcall(function()
-            h.WalkSpeed = frozenValues.WalkSpeed
-            h.AutoRotate = frozenValues.AutoRotate
-            h.UseJumpPower = frozenValues.UseJumpPower
-            h.JumpPower = frozenValues.JumpPower
-            h.JumpHeight = frozenValues.JumpHeight
-            h:SetStateEnabled(Enum.HumanoidStateType.Jumping, frozenValues.JumpingEnabled)
-        end)
-    end
-
-    if frozenControls then
-        pcall(function() frozenControls:Enable() end)
-    end
-
-    frozenCharacter = nil
-    frozenHumanoid = nil
-    frozenRoot = nil
-    frozenValues = nil
-    frozenControls = nil
-end
-
-player.CharacterAdded:Connect(function(character)
-    if not enabled then return end
-
-    task.spawn(function()
-        local humanoid = character:WaitForChild("Humanoid", 10)
-        if humanoid and enabled then
-            task.wait(0.25)
-            freezePlayer()
-        end
-    end)
-end)
-
--- Heartbeat de estabilização
-RunService.Heartbeat:Connect(function()
-    if not enabled or not frozenHumanoid or not frozenHumanoid.Parent then
-        return
-    end
-
-    pcall(function()
-        frozenHumanoid.WalkSpeed = 0
-        frozenHumanoid.AutoRotate = false
-        frozenHumanoid.JumpPower = 0
-        frozenHumanoid.JumpHeight = 0
-        frozenHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-    end)
-
-    local root = frozenRoot or (frozenCharacter and frozenCharacter:FindFirstChild("HumanoidRootPart"))
-    if root then
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-    end
-
-    if frozenControls then
-        pcall(function() frozenControls:Disable() end)
-    end
-end)
-
--- ----------------------------------------------------------
--- Noclip System (Incondicional no Stepped)
--- ----------------------------------------------------------
-RunService.Stepped:Connect(function()
-    if not enabled then return end
-
-    local character = player.Character
-    if character then
-        for _, part in ipairs(character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false
-            end
-        end
-    end
-end)
-
--- ----------------------------------------------------------
--- Remote helpers
--- ----------------------------------------------------------
-local function getFlowEvent()
-    local flow = ReplicatedStorage:FindFirstChild("FlowClient")
-    local runner = flow and flow:FindFirstChild("ClientRunner")
-    return runner and runner:FindFirstChild("Event")
-end
-
-local function fireFlow(...)
-    local event = getFlowEvent()
-    if not event then
-        return false, "FlowClient.ClientRunner.Event não encontrado"
-    end
-
-    local args = {...}
     return pcall(function()
-        event:FireServer(unpack(args))
+        SetAutoRoll:FireServer(value)
     end)
 end
 
-local function removeHelicopters()
-    for _, object in ipairs(workspace:GetDescendants()) do
-        if object:IsA("Model") and object.Name == "Helicopter" then
-            pcall(function() object:Destroy() end)
-        end
+-- ================================================================
+-- BUY BEST DICE
+-- ================================================================
+--
+-- Recovered facts:
+--   * calls GetAll()
+--   * reads OwnedDice and Money
+--   * builds a list with name + data
+--   * sorts primarily by data.luck, then by data.price
+--   * uses ipairs over the sorted list
+--   * buys through BuyDice:Fire(name)
+--   * waits 0.3 seconds
+--   * equips through EquipDice:Fire(name)
+--
+
+local function getDataController()
+    if not DataControllerModule then
+        return nil
+    end
+
+    local ok, controller = pcall(require, DataControllerModule)
+    if ok then
+        return controller
     end
 end
 
--- ----------------------------------------------------------
--- Character teleport & Teleports Module
--- ----------------------------------------------------------
-local teleports = {}
+local function getAllPlayerData()
+    local controller = getDataController()
 
-local function stream(position)
-    pcall(function()
-        player:RequestStreamAroundAsync(position, 5)
-    end)
-end
-
-function teleports:GetEndZ()
-    local playerGui = player:FindFirstChildOfClass("PlayerGui")
-    if playerGui then
-        for _, object in ipairs(playerGui:GetDescendants()) do
-            if object:IsA("TextLabel")
-                and string.find(object.Text, "Mexico", 1, true)
-            then
-                local currentObject = object.Parent
-                while currentObject and currentObject ~= playerGui do
-                    local value = tonumber(currentObject.Name:match("^Border_(-?[%d%.]+)$"))
-                    if value then return value end
-                    currentObject = currentObject.Parent
-                end
-            end
-        end
-    end
-end
-
-function teleports:GetEndPrompt()
-    local map = workspace:FindFirstChild("Map")
-    local buildings = map and map:FindFirstChild("Buildings")
-    local customs = buildings and buildings:FindFirstChild("CustomsFinal")
-    if not customs then return nil end
-
-    local customsBuilding = customs:FindFirstChild("CustomsBuilding")
-    local finalDoor = customsBuilding and customsBuilding:FindFirstChild("FinalDoor")
-    local command = finalDoor and finalDoor:FindFirstChild("Command")
-    local commandButton = command and command:FindFirstChild("CommandButton")
-    local holder = commandButton and commandButton:FindFirstChild("Prompt")
-
-    if holder then
-        if holder:IsA("ProximityPrompt") then return holder end
-        local direct = holder:FindFirstChildOfClass("ProximityPrompt")
-        if direct then return direct end
-    end
-
-    for _, candidate in ipairs(customs:GetDescendants()) do
-        if candidate:IsA("ProximityPrompt")
-            and candidate.ActionText == "Activate"
-            and candidate:FindFirstAncestor("FinalDoor")
-        then
-            return candidate
-        end
-    end
-end
-
-function teleports:GetEndAnchor(endZ, direction)
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local source = root and root.Position or Vector3.new(500, 2000, endZ)
-
-    local map = workspace:FindFirstChild("Map")
-    local buildings = map and map:FindFirstChild("Buildings")
-    local best = source
-    local bestDistance = math.huge
-
-    if buildings then
-        for _, building in ipairs(buildings:GetChildren()) do
-            if building:IsA("Model") then
-                local ok, pivot = pcall(building.GetPivot, building)
-                if ok then
-                    if building.Name == "CustomsFinal" then
-                        return pivot:PointToWorldSpace(Vector3.new(-44.4001, 4.65, -16.5))
-                    end
-
-                    local distance = math.abs(endZ - pivot.Position.Z)
-                    local side = (endZ - pivot.Position.Z) * direction
-                    if side >= -500 and distance < bestDistance then
-                        best = pivot.Position
-                        bestDistance = distance
-                    end
-                end
-            end
+    if controller and type(controller.GetAll) == "function" then
+        local ok, data = pcall(function()
+            return controller:GetAll()
+        end)
+        if ok and type(data) == "table" then
+            return data
         end
     end
 
-    return Vector3.new(best.X, best.Y + 30, endZ - direction * 35)
+    return nil
 end
 
-function teleports:GetEndPromptDestination(prompt, direction)
-    local holder = prompt and prompt.Parent
-    local holderCFrame
-
-    if holder and holder:IsA("Attachment") then
-        holderCFrame = holder.WorldCFrame
-    elseif holder and holder:IsA("BasePart") then
-        holderCFrame = holder.CFrame
-    end
-
-    if not holderCFrame then return nil end
-
-    local outward = holderCFrame.LookVector
-    if outward.Z * direction > 0 then outward = -outward end
-    if math.abs(outward.Z) < 0.25 then outward = Vector3.new(0, 0, -direction) end
-
-    local position = holderCFrame.Position + outward * 4
-    return CFrame.lookAt(
-        position,
-        Vector3.new(holderCFrame.Position.X, position.Y, holderCFrame.Position.Z),
-        Vector3.yAxis
-    )
-end
-
--- Teleporte Direto Sincronizado
-function teleports:Move(destination, anchorAfter)
-    if not current() or typeof(destination) ~= "CFrame" then
+function BuyBestDiceOnce()
+    if not BuyDice or not EquipDice then
         return false
     end
 
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not character or not humanoid or not root or humanoid.Health <= 0 then
+    local allData = getAllPlayerData()
+    if type(allData) ~= "table" then
         return false
     end
 
-    local ok = pcall(function()
-        root.Anchored = false
+    local ownedDice = allData.OwnedDice
+    if type(ownedDice) ~= "table" then
+        return false
+    end
 
-        if humanoid.SeatPart then
-            humanoid.Sit = false
-            humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-            task.wait(0.05)
+    local candidates = {}
+
+    for name, data in pairs(ownedDice) do
+        if type(data) == "table" then
+            table.insert(candidates, {
+                name = name,
+                data = data,
+            })
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        local aLuck = tonumber(a.data and a.data.luck) or 0
+        local bLuck = tonumber(b.data and b.data.luck) or 0
+
+        if aLuck ~= bLuck then
+            return aLuck > bLuck
         end
 
-        character:PivotTo(destination)
-        root.CFrame = destination
-        root.AssemblyLinearVelocity = Vector3.zero
-        root.AssemblyAngularVelocity = Vector3.zero
-
-        if anchorAfter and root and root.Parent then
-            root.Anchored = true
-        end
+        local aPrice = tonumber(a.data and a.data.price) or 0
+        local bPrice = tonumber(b.data and b.data.price) or 0
+        return aPrice > bPrice
     end)
 
-    return ok
-end
-
-local function moveThreeTimes(destination)
-    for i = 1, 3 do
-        if not current() then return false end
-        task.wait(0.4)
-        if not current() then return false end
-        if not teleports:Move(destination, true) then return false end
-    end
-    return true
-end
-
-local function getFinalDoor()
-    local map = workspace:FindFirstChild("Map")
-    local buildings = map and map:FindFirstChild("Buildings")
-    local customs = buildings and buildings:FindFirstChild("CustomsFinal")
-    local customsBuilding = customs and customs:FindFirstChild("CustomsBuilding")
-    return customsBuilding and customsBuilding:FindFirstChild("FinalDoor")
-end
-
-local function getExactFinalPrompt()
-    local finalDoor = getFinalDoor()
-    if not finalDoor then return nil end
-
-    local command = finalDoor:FindFirstChild("Command")
-    local commandButton = command and command:FindFirstChild("CommandButton")
-    local promptFolder = commandButton and commandButton:FindFirstChild("Prompt")
-
-    if promptFolder then
-        if promptFolder:IsA("ProximityPrompt") then return promptFolder end
-        local prompt = promptFolder:FindFirstChildOfClass("ProximityPrompt")
-        if prompt then return prompt end
+    local money = tonumber(allData.Money)
+    if not money then
+        return false
     end
 
-    for _, object in ipairs(finalDoor:GetDescendants()) do
-        if object:IsA("ProximityPrompt") then
-            return object
-        end
-    end
-    return nil
-end
+    for _, dice in ipairs(candidates) do
+        local price = tonumber(dice.data and dice.data.price)
 
-local function getDoorRCFrame()
-    local finalDoor = getFinalDoor()
-    local doorR = finalDoor and finalDoor:FindFirstChild("DoorR", true)
+        if price and price <= money then
+            local okBuy = pcall(function()
+                BuyDice:Fire(dice.name)
+            end)
 
-    if not doorR then return nil end
+            if okBuy then
+                task.wait(0.3)
 
-    if doorR:IsA("BasePart") then
-        return doorR.CFrame
-    elseif doorR:IsA("Model") then
-        local ok, pivot = pcall(doorR.GetPivot, doorR)
-        if ok and pivot then return pivot end
-    end
-    return nil
-end
-
--- ----------------------------------------------------------
--- Fast Timer Parser & Detector
--- ----------------------------------------------------------
-local function parseTimerText(text)
-    text = tostring(text or "")
-    text = text:gsub("<[^>]->", "")
-    text = text:gsub("[%s\194\160\226\128\175]+", " ")
-    
-    local minutes, seconds = text:match("(%d+)%s*[mM]%s*(%d+)%s*[sS]")
-    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
-
-    minutes, seconds = text:match("(%d+)%s*:%s*(%d+)")
-    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
-
-    local onlySeconds = text:match("(%d+)%s*[sS]")
-    if onlySeconds then return tonumber(onlySeconds) end
-
-    local number = text:match("(%d+)")
-    if number then return tonumber(number) end
-
-    return nil
-end
-
-local function getTimerLabel()
-    local finalDoor = getFinalDoor()
-    if not finalDoor then return nil end
-
-    local timerModel = finalDoor:FindFirstChild("Timer")
-    local surfaceGui = timerModel and timerModel:FindFirstChild("SurfaceGui")
-    local timerFrame = surfaceGui and surfaceGui:FindFirstChild("Timer")
-    local timeLabel = timerFrame and timerFrame:FindFirstChild("Time")
-
-    if timeLabel and (timeLabel:IsA("TextLabel") or timeLabel:IsA("TextButton")) then
-        return timeLabel
-    end
-
-    for _, object in ipairs(finalDoor:GetDescendants()) do
-        if object.Name == "Time" and (object:IsA("TextLabel") or object:IsA("TextButton")) then
-            return object
-        end
-    end
-
-    return nil
-end
-
--- Mantém o player Ancorado e travado na DoorR enquanto aguarda
-local function waitForTimerZero(timeout)
-    local deadline = os.clock() + (timeout or 180)
-
-    while current() and os.clock() < deadline do
-        local doorCFrame = getDoorRCFrame()
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-
-        -- Reforça o congelamento e trava de posição dentro da DoorR
-        if root and doorCFrame then
-            root.Anchored = true
-            root.CFrame = doorCFrame
-        end
-
-        local label = getTimerLabel()
-        if label and label.Parent then
-            local remaining = parseTimerText(label.Text)
-            
-            if remaining ~= nil and remaining <= 2 then
-                print("[DS HUB] Cronómetro em <= 2s! Disparando teleporte no servidor...")
-                return true
+                pcall(function()
+                    EquipDice:Fire(dice.name)
+                end)
             end
+
+            return okBuy
         end
-        task.wait(0.05)
     end
 
     return false
 end
 
--- ----------------------------------------------------------
--- Activation & Teleport Executions
--- ----------------------------------------------------------
-local function fireFinalDoorPrompt()
-    local prompt
-    local deadline = os.clock() + 15
+-- ================================================================
+-- COLLECT CASH
+-- ================================================================
 
-    while current() and os.clock() < deadline do
-        prompt = getExactFinalPrompt()
-        if prompt and prompt.Parent then break end
-        task.wait(0.20)
-    end
-
-    if not prompt or not prompt.Parent then return false end
-
-    for attempt = 1, 3 do
-        if not current() then return false end
-
-        if type(fireproximityprompt) == "function" then
-            pcall(function() fireproximityprompt(prompt) end)
-        end
-
-        pcall(function()
-            local duration = prompt.HoldDuration
-            prompt.HoldDuration = 0
-            prompt:InputHoldBegin()
-            task.wait(0.10)
-            prompt:InputHoldEnd()
-            prompt.HoldDuration = duration
-        end)
-
-        task.wait(0.5)
-        if not prompt.Enabled or not prompt.Parent then
-            return true
-        end
-    end
-
-    return true
-end
-
-local function teleportCFrame(destination, anchorAfter)
-    if typeof(destination) ~= "CFrame" then return false end
-    pcall(function() player:RequestStreamAroundAsync(destination.Position, 12) end)
-    return teleports:Move(destination, anchorAfter)
-end
-
-local function runDoorRSideTeleports()
-    if not current() then return false end
-
-    local base = getDoorRCFrame()
-    if not base then return false end
-
-    -- Apenas 1 único deslocamento para frente
-    local offsetDir = Vector3.new(0, 0, -10)
-    local targetPosition = base.Position + (base.RightVector * offsetDir.X) + (base.LookVector * offsetDir.Z)
-    local targetCFrame = CFrame.new(targetPosition) * base.Rotation
-
-    print("[DS HUB] Teleporte único de vitória no servidor...")
-    
-    -- Teleporta uma única vez para a posição final e ancora
-    teleportCFrame(targetCFrame, true)
-
-    return true
-end
-
-function teleports:ToEnd()
-    local endZ = self:GetEndZ()
-    if not endZ then return false, "End position unavailable" end
-
-    local start = workspace:FindFirstChildOfClass("SpawnLocation")
-    local direction = (not start or endZ >= start.Position.Z) and 1 or -1
-
-    local prompt = self:GetEndPrompt()
-    if prompt then
-        local destination = self:GetEndPromptDestination(prompt, direction)
-        if destination and moveThreeTimes(destination) then return true end
-    end
-
-    local anchor = self:GetEndAnchor(endZ, direction)
-    stream(anchor)
-
-    if not teleports:Move(CFrame.lookAt(anchor, anchor + Vector3.new(0, 0, direction), Vector3.yAxis), true) then
-        return false, "Fallback teleport failed"
-    end
-
-    local expires = os.clock() + 12
-    while os.clock() < expires and current() do
-        prompt = self:GetEndPrompt()
-        if prompt then
-            local destination = self:GetEndPromptDestination(prompt, direction)
-            if destination and moveThreeTimes(destination) then return true end
-        end
-        task.wait(0.2)
-    end
-
-    return false, "End gate prompt unavailable"
-end
-
-local function waitForEndScreen()
-    local deadline = os.clock() + 20
-    while current() and os.clock() < deadline do
-        local endScreen = workspace:FindFirstChild("EndScreen", true)
-        if endScreen then return true end
-        task.wait(0.25)
-    end
-    return true
-end
-
-local function waitForOpeningAnimationToFinish(timeout)
-    task.wait(2)
-    return current()
-end
-
--- ----------------------------------------------------------
--- Process state machine
--- ----------------------------------------------------------
-local function waitSeconds(seconds)
-    local deadline = os.clock() + seconds
-    while current() and os.clock() < deadline do
-        task.wait(0.1)
-    end
-    return current()
-end
-
-local function lobbyPhase()
-    if not workspace:FindFirstChild("Lobbies") then
+function CollectCashOnce()
+    if not CollectBalance then
         return false
     end
 
-    writeSetting(PHASE_KEY, "LobbyPlay")
-    queueResume()
-
-    local ok = fireFlow("LobbyServer", "play")
-    if not ok then
-        task.wait(2)
-        return true
-    end
-
-    if not waitSeconds(2) then return true end
-
-    writeSetting(PHASE_KEY, "LobbyCreate")
-    queueResume()
-    fireFlow("LobbyServer", "create", {
-        car = "Claptima",
-        permissions = "Friends",
-        maxPlayers = 1,
-    })
-
-    local deadline = os.clock() + 90
-    while current() and os.clock() < deadline do
-        if workspace:FindFirstChild("Map") or not workspace:FindFirstChild("Lobbies") then
-            break
-        end
-        task.wait(0.25)
-    end
-
-    return true
-end
-
-local function gamePhase()
-    local map = workspace:FindFirstChild("Map")
-    if not map then return false end
-
-    writeSetting(PHASE_KEY, "GameEnd")
-
-    -- 1) Chega ao Command
-    if not teleports:ToEnd() then
-        task.wait(1)
-        return true
-    end
-
-    if not waitSeconds(0.75) then return true end
-    removeHelicopters()
-
-    -- 2) Ativa a porta no Command
-    writeSetting(PHASE_KEY, "ActivatingFinalDoor")
-    fireFinalDoorPrompt()
-
-    -- 3) Espera a porta abrir
-    writeSetting(PHASE_KEY, "WaitingDoorOpening")
-    waitForOpeningAnimationToFinish(15)
-    if not waitSeconds(1) then return true end
-
-    -- 4) Teleporta para DENTRO da DoorR e ativa o Anchored imediatamente
-    writeSetting(PHASE_KEY, "DoorR")
-    local doorRCFrame = getDoorRCFrame()
-    if doorRCFrame then
-        teleportCFrame(doorRCFrame, true)
-    end
-
-    -- 5) Aguarda o temporizador <= 2s mantendo o player ANCORADO dentro da DoorR
-    writeSetting(PHASE_KEY, "WaitingTime")
-    waitForTimerZero(180)
-
-    if not current() then return true end
-
-    -- 6) Executa o teleporte único e direto de vitória
-    writeSetting(PHASE_KEY, "DoorRSideTeleport")
-    runDoorRSideTeleports()
-
-    if not current() then return true end
-
-    -- 7) Espera pela EndScreen e envia o Replay
-    writeSetting(PHASE_KEY, "WaitingEndScreen")
-    waitForEndScreen()
-
-    writeSetting(PHASE_KEY, "WaitingForServerTransition")
-    queueResume()
-    fireFlow("GameManager", "Replay")
-
-    while current() do
-        task.wait(1)
-    end
-
-    return true
-end
-
-local function start()
-    if running then return end
-    running = true
-    freezePlayer()
-
-    task.spawn(function()
-        while current() do
-            freezePlayer()
-            removeHelicopters()
-
-            if lobbyPhase() then
-                task.wait(0.5)
-            elseif gamePhase() then
-                task.wait(0.5)
-            else
-                task.wait(1)
-            end
-        end
-
-        running = false
-        if not enabled then unfreezePlayer() end
+    return pcall(function()
+        CollectBalance:FireServer()
     end)
 end
 
--- ----------------------------------------------------------
--- Toggle
--- ----------------------------------------------------------
+-- ================================================================
+-- AUTO REBIRTH
+-- ================================================================
+
+function RebirthOnce()
+    if not Rebirth then
+        return false
+    end
+
+    return pcall(function()
+        Rebirth:FireServer()
+    end)
+end
+
+-- ================================================================
+-- AUTO EQUIP BEST
+-- ================================================================
+
+function EquipBestOnce()
+    if not EquipBest then
+        return false
+    end
+
+    return pcall(function()
+        EquipBest:FireServer()
+    end)
+end
+
+-- ================================================================
+-- AUTO UPGRADE
+-- ================================================================
+--
+-- The decoded bytecode explicitly contains:
+--   Upgrades:GetChildren()
+--   upgrade.Upgrades
+--   upgrade.price
+--   BuyUpgrade:Fire(...)
+--
+-- The VM obscures the exact shape of the argument list after the price
+-- comparison, so the function below preserves the observable operation and
+-- provides the two client-module calling conventions seen in the bytecode.
+
+local function getUpgradeContainer()
+    return UpgradesFolder and UpgradesFolder:FindFirstChild("Upgrades")
+end
+
+local function getUpgradePrice(upgrade)
+    if not upgrade then
+        return nil
+    end
+
+    local price = upgrade:GetAttribute("price")
+    if price ~= nil then
+        return tonumber(price)
+    end
+
+    local value = upgrade:FindFirstChild("price")
+    if value then
+        return tonumber(value.Value)
+    end
+
+    local ok, property = pcall(function()
+        return upgrade.price
+    end)
+
+    if ok then
+        return tonumber(property)
+    end
+end
+
+function AutoUpgradeOnce(money)
+    local folder = getUpgradeContainer()
+    if not folder or not BuyUpgrade then
+        return false
+    end
+
+    if money == nil then
+        local data = getAllPlayerData()
+        money = data and tonumber(data.Money)
+    end
+
+    if not money then
+        return false
+    end
+
+    local upgraded = false
+
+    for _, upgrade in ipairs(folder:GetChildren()) do
+        local price = getUpgradePrice(upgrade)
+
+        if price and price <= money then
+            local ok = pcall(function()
+                BuyUpgrade:Fire(upgrade)
+            end)
+
+            upgraded = upgraded or ok
+        end
+    end
+
+    return upgraded
+end
+
+-- ================================================================
+-- SELL ALL
+-- ================================================================
+--
+-- Recovered object chain from the payload:
+--   require(Framework.Features.Selling.SellUtil)
+--   require(...ClientComm...)
+--   ClientComm.new(Network)
+--   SellService
+--   GetFunction("SellInventory")
+--   CreateSummary
+--   Inventory.Slots
+--   ipairs / table.insert / slot.key / totalUnits
+--
+-- The inventory-summary construction is the portion where the VM removes
+-- enough source-level information that the exact original table literal cannot
+-- be reproduced with certainty. The implementation below follows the same
+-- data flow instead of inventing additional game remotes.
+
+local SellUtilModule = waitChild(waitChild(Features, "Selling"), "SellUtil")
+local SellUtil
+
+if SellUtilModule then
+    pcall(function()
+        SellUtil = require(SellUtilModule)
+    end)
+end
+
+local function getSellService()
+    if not PackageNetwork or not ClientCommModule then
+        return nil
+    end
+
+    local ok, commModule = pcall(require, ClientCommModule)
+    if not ok or not commModule or type(commModule.new) ~= "function" then
+        return nil
+    end
+
+    local okComm, comm = pcall(function()
+        return commModule.new(Network)
+    end)
+
+    if not okComm or not comm then
+        return nil
+    end
+
+    local okService, service = pcall(function()
+        return comm:GetFunction("SellService")
+    end)
+
+    if okService then
+        return service
+    end
+end
+
+local function getInventorySlots()
+    local data = getAllPlayerData()
+    if type(data) == "table" and type(data.Inventory) == "table" then
+        return data.Inventory.Slots
+    end
+
+    local inventory = player:FindFirstChild("Inventory")
+    return inventory and inventory:FindFirstChild("Slots")
+end
+
+function SellAllOnce()
+    if not SellUtil then
+        return false
+    end
+
+    local sellService = getSellService()
+    if not sellService then
+        return false
+    end
+
+    local sellInventory
+    local okFunction = pcall(function()
+        sellInventory = sellService:GetFunction("SellInventory")
+    end)
+
+    if not okFunction or not sellInventory then
+        return false
+    end
+
+    local slots = getInventorySlots()
+    if not slots then
+        return false
+    end
+
+    local sales = {}
+    local totalUnits = 0
+
+    for _, slot in ipairs(slots) do
+        if type(slot) == "table" and slot.key ~= nil then
+            local units = tonumber(slot.totalUnits) or tonumber(slot.units) or 1
+            totalUnits = totalUnits + units
+            table.insert(sales, {
+                key = slot.key,
+                totalUnits = units,
+            })
+        end
+    end
+
+    if totalUnits <= 0 then
+        return false
+    end
+
+    local summary = sales
+
+    if type(SellUtil.CreateSummary) == "function" then
+        local okSummary, result = pcall(function()
+            return SellUtil.CreateSummary({
+                sales = sales,
+                totalUnits = totalUnits,
+            })
+        end)
+        if okSummary and result ~= nil then
+            summary = result
+        end
+    end
+
+    local okSell = pcall(function()
+        if type(sellInventory) == "function" then
+            sellInventory(summary)
+        elseif sellInventory.InvokeServer then
+            sellInventory:InvokeServer(summary)
+        end
+    end)
+
+    return okSell
+end
+
+-- ==========================================================
+-- Toggle/loop manager
+-- ==========================================================
+
+local loops = {
+    BuyBestDice = false,
+    CollectCash = false,
+    AutoRebirth = false,
+    AutoUpgrade = false,
+    AutoEquipBest = false,
+    SellAll = false,
+}
+
+local function startLoop(name, callback, delay)
+    loops[name] = true
+    task.spawn(function()
+        while loops[name] and aliveWindow(Window) do
+            pcall(callback)
+            task.wait(delay)
+        end
+    end)
+end
+
+local function stopAll()
+    SetAutoRollState(false)
+    for key in pairs(loops) do
+        loops[key] = false
+    end
+end
+
+MainTab:CreateToggle("Auto Roll", false, function(value)
+    SetAutoRollState(value)
+end)
+
+MainTab:CreateToggle("Buy Best Dice", false, function(value)
+    loops.BuyBestDice = value
+    if value then
+        startLoop("BuyBestDice", BuyBestDiceOnce, 1)
+    end
+end)
+
+MainTab:CreateToggle("Collect Cash", false, function(value)
+    loops.CollectCash = value
+    if value then
+        startLoop("CollectCash", CollectCashOnce, 1)
+    end
+end)
+
+MainTab:CreateToggle("Auto Rebirth", false, function(value)
+    loops.AutoRebirth = value
+    if value then
+        startLoop("AutoRebirth", RebirthOnce, 1)
+    end
+end)
+
+MainTab:CreateToggle("Auto Upgrade", false, function(value)
+    loops.AutoUpgrade = value
+    if value then
+        startLoop("AutoUpgrade", AutoUpgradeOnce, 0.2)
+    end
+end)
+
+MainTab:CreateToggle("Auto Equip Best", false, function(value)
+    loops.AutoEquipBest = value
+    if value then
+        startLoop("AutoEquipBest", EquipBestOnce, 0.5)
+    end
+end)
+
+MainTab:CreateToggle("Sell All", false, function(value)
+    loops.SellAll = value
+    if value then
+        startLoop("SellAll", SellAllOnce, 1.5)
+    end
+end)
+
 if type(Window.OnUnload) == "function" then
     Window:OnUnload(function()
-        enabled = false
-        running = false
-        unfreezePlayer()
+        stopAll()
     end)
 end
 
-AutoFarmTab:CreateToggle(
-    "Auto Farm Credz",
-    enabled,
-    function(value)
-        enabled = value
-        writeSetting(ENABLED_KEY, value)
-
-        if value then
-            removeHelicopters()
-            freezePlayer()
-            queueResume()
-            start()
-        else
-            running = false
-            writeSetting(PHASE_KEY, "Stopped")
-            unfreezePlayer()
-        end
-    end
-)
-
-if enabled then
-    removeHelicopters()
-    freezePlayer()
-    task.defer(start)
-end
-
-env.DSHUB_AUTOFARM_LOADED = true
+env.DSHUB_ANIMEDICE_LOADED = true
 return Window
