@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- FS v2.1 BETA (Engine Otimizada / Zero Memory Leak)
+-- FS v2.1 BETA (Engine Otimizada / Fix Auto Regar)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -97,7 +97,32 @@ local function AdvancedGhostFill(targetPos, prompt)
     end)
 end
 
--- [6] GC do cache
+-- [6] Função para equipar o regador (necessário para o Remote funcionar)
+local function EquipWateringCan()
+    if not _G.AutoWater then return end
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    -- Já está equipado?
+    for _, child in pairs(char:GetChildren()) do
+        if child:IsA("Tool") and (string.find(string.lower(child.Name), "water") or string.find(string.lower(child.Name), "regador")) then
+            return
+        end
+    end
+    
+    -- Tenta equipar da mochila
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in pairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and (string.find(string.lower(tool.Name), "water") or string.find(string.lower(tool.Name), "regador")) then
+                tool.Parent = char
+                break
+            end
+        end
+    end
+end
+
+-- [7] GC do cache e Pesca
 task.spawn(function()
     while task.wait(30) do
         if _G.DSHub_Kill then break end
@@ -105,7 +130,6 @@ task.spawn(function()
     end
 end)
 
--- [7] Hook de pesca
 if not _G.DSHub_FishingHooked then
     _G.DSHub_FishingHooked = true
     local autoYanking = false
@@ -127,7 +151,7 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock (Otimizado)
+-- [8] ProcessBlock (Otimizado e com Fix no Auto Regar)
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
@@ -168,7 +192,6 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     local isFarmland = (block.Name == "Farmland")
     local isTree = false
     
-    -- OTIMIZAÇÃO: Só faz o parse do nome se realmente precisar
     if _G.AutoChop or _G.AutoHarvest then
         local lowerName = string.lower(block.Name)
         local itemID = block:GetAttribute("ID")
@@ -203,15 +226,17 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     end
 
     if isFarmland then
-        if _G.AutoWater and st ~= ItemStates.WATERED and st ~= ItemStates.PERFECT then
-            SendRequest(ActiveRemotes.Water, vPos, key .. "_w", 0.35, 1)
+        -- FIX AUTO REGAR: Cooldown de 0.8s e checa distância real de 18
+        if _G.AutoWater and st ~= ItemStates.WATERED and st ~= ItemStates.PERFECT and dist <= 18 then
+            task.spawn(EquipWateringCan) -- Garante que o regador tá na mão
+            SendRequest(ActiveRemotes.Water, vPos, key .. "_w", 0.8, 1)
         end
         
-        if _G.AutoFertilize and st ~= ItemStates.FERTILIZED and st ~= ItemStates.PERFECT then
+        if _G.AutoFertilize and st ~= ItemStates.FERTILIZED and st ~= ItemStates.PERFECT and dist <= 18 then
             SendRequest(ActiveRemotes.Fertilize, vPos, key .. "_f", 0.35, 1)
         end
 
-        if _G.AutoFarm then
+        if _G.AutoFarm and dist <= 18 then
             local x, y, z = tostring(vPos.X), tostring(vPos.Y + 1), tostring(vPos.Z)
             if not (VoxelLookup[x] and VoxelLookup[x][y] and VoxelLookup[x][y][z]) then
                 SendRequest(ActiveRemotes.Plant, Vector3.new(vPos.X, vPos.Y+1, vPos.Z), key .. "_p", 0.35, 1)
@@ -224,7 +249,7 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     end
 end
 
--- [9] Loop principal (Otimização Extrema de Memória)
+-- [9] Loop principal (Otimizado para ir no poço APENAS se precisar)
 task.spawn(function()
     local now = tick
     local cachedChildren = {}
@@ -255,22 +280,38 @@ task.spawn(function()
                 local curTime = now()
                 local rootPos = root.Position
 
-                -- OTIMIZAÇÃO: Atualiza a lista de blocos a cada 2 segundos, não a cada 0.1s
                 if curTime - lastCacheUpdate > 2 then
                     cachedChildren = blocks:GetChildren()
                     lastCacheUpdate = curTime
                 end
 
+                -- FIX AUTO REGAR: Só vai no poço se tiver terra seca por perto
                 if _G.AutoWater then
-                    for _, b in pairs(cachedChildren) do
-                        if b.Name == "Stone Well" and (b:GetAttribute("AlternativeState") or 0) > 0 then
-                            local rp = b:FindFirstChild("Root")
-                            if rp and (rp.Position - rootPos).Magnitude < 60 then
-                                if not Cache["Well"] or (curTime - Cache["Well"] > 3) then
-                                    Cache["Well"] = curTime
-                                    AdvancedGhostFill(rp.Position, rp:FindFirstChildOfClass("ProximityPrompt"))
+                    local hasDryFarmland = false
+                    for _, b in ipairs(cachedChildren) do
+                        if b.Name == "Farmland" then
+                            local bPos = b:IsA("BasePart") and b.Position or b:IsA("Model") and b:GetPivot().Position
+                            if bPos and (bPos - rootPos).Magnitude < 25 then
+                                local st = b:GetAttribute("State")
+                                if st ~= ItemStates.WATERED and st ~= ItemStates.PERFECT then
+                                    hasDryFarmland = true
+                                    break
                                 end
-                                break
+                            end
+                        end
+                    end
+
+                    if hasDryFarmland then
+                        for _, b in pairs(cachedChildren) do
+                            if b.Name == "Stone Well" and (b:GetAttribute("AlternativeState") or 0) > 0 then
+                                local rp = b:FindFirstChild("Root")
+                                if rp and (rp.Position - rootPos).Magnitude < 60 then
+                                    if not Cache["Well"] or (curTime - Cache["Well"] > 5) then -- Cooldown aumentado para 5s
+                                        Cache["Well"] = curTime
+                                        AdvancedGhostFill(rp.Position, rp:FindFirstChildOfClass("ProximityPrompt"))
+                                    end
+                                    break
+                                end
                             end
                         end
                     end
@@ -644,7 +685,6 @@ function DSHubLibrary.Init(options)
     createLabel(ProfileCard, UDim2.new(1, -34, 0, 12), UDim2.new(0, 32, 0, 4), HubLocalPlayer.DisplayName, THEME.Text, Enum.Font.GothamBold, 9, Enum.TextXAlignment.Left)
     local ProfileStatus = createLabel(ProfileCard, UDim2.new(1, -34, 0, 10), UDim2.new(0, 32, 0, 18), "60 FPS • 30ms", THEME.Accent, Enum.Font.GothamMedium, 8, Enum.TextXAlignment.Left)
 
-    -- OTIMIZAÇÃO 3: O FPS counter só atualiza 1 vez por segundo, não 60 vezes!
     local updateFpsCounter = false
     task.spawn(function()
         while true do
@@ -828,7 +868,7 @@ function DSHubLibrary.Init(options)
 
     PlayIntro(function() 
         MainContainer.Visible = true 
-        updateFpsCounter = true -- Ativa o FPS counter só depois que a UI abre
+        updateFpsCounter = true
     end)
     return runtime
 end
@@ -865,4 +905,4 @@ GatherTab:CreateToggle("Auto Maçãs",   false, function(s) _G.AutoApple = s end
 local MiscTab = Hub:CreateTab("Outros", "🎣")
 MiscTab:CreateToggle("Auto Pesca", false, function(s) _G.AutoFishing = s end)
 
-print("[DS HUB] Carregado ✔ (FS v2.1 BETA)")
+print("[DS HUB] Carregado ✔ (FS v2.1 BETA) - Fix AutoWater")
