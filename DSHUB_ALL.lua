@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- v2.1 (Mobile Optimized / WeAreDevs Fix)
+-- v2.1 (Mobile Optimized / Anti-Freeze / WeAreDevs Fix)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -91,12 +91,11 @@ local function AdvancedGhostFill(targetPos, prompt)
     end)
 end
 
--- [6] GC do cache (Corrigido erro do Delta)
+-- [6] GC do cache
 task.spawn(function()
     while task.wait(30) do
         if _G.DSHub_Kill then break end
         Cache = {}
-        -- Removido collectgarbage que causava erro no Delta
     end
 end)
 
@@ -122,7 +121,7 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock (Distance check antes dos GetAttribute)
+-- [8] ProcessBlock (Anti-Freeze + Otimizado)
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
@@ -160,72 +159,60 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
 
     local st = block:GetAttribute("State")
     local key = tostring(vPos)
-    local lowerName = string.lower(block.Name)
-    local itemID = block:GetAttribute("ID")
-    local info = itemID and ItemData.IDLookup[itemID] and ItemData[ItemData.IDLookup[itemID]]
-
-    local isTree = (info and (info.TYPE == "Tree" or info.TYPE == "Log"))
-                or string.find(lowerName, "tree")
-                or string.find(lowerName, "wood")
-                or string.find(lowerName, "log")
-
-    if _G.AutoHarvest and not isTree and dist <= 18 and (st == ItemStates.RIPE or st == ItemStates.READY) then
-        task.spawn(function() pcall(function() ActiveRemotes.Harvest:InvokeServer(vPos) end) end)
+    local isFarmland = (block.Name == "Farmland")
+    local isTree = false
+    
+    if _G.AutoChop or _G.AutoHarvest then
+        local lowerName = string.lower(block.Name)
+        local itemID = block:GetAttribute("ID")
+        local info = itemID and ItemData.IDLookup[itemID] and ItemData[ItemData.IDLookup[itemID]]
+        isTree = (info and (info.TYPE == "Tree" or info.TYPE == "Log"))
+               or string.find(lowerName, "tree")
+               or string.find(lowerName, "wood")
+               or string.find(lowerName, "log")
     end
 
-    if _G.AutoMine and dist <= 20 then
-        local typeStr = info and string.lower(info.TYPE or "") or ""
-        local metaStr = info and string.lower(info.META_TYPE or "") or ""
-        if string.find(lowerName,"ore") or string.find(lowerName,"copper") or string.find(lowerName,"rock")
-        or string.find(lowerName,"stone") or string.find(typeStr,"rock") or string.find(typeStr,"ore")
-        or string.find(metaStr,"rock") or string.find(metaStr,"ore") or block:GetAttribute("IsOre") then
-            local mKey = key .. "_m"
-            if not Cache[mKey] or (curTime - Cache[mKey] > 0.2) then
-                Cache[mKey] = curTime
-                task.spawn(function() pcall(function() ActiveRemotes.Mine:InvokeServer(vPos) end) end)
+    local function SendRequest(remote, args, cacheKey)
+        if not Cache[cacheKey] or (curTime - Cache[cacheKey] > 0.4) then
+            Cache[cacheKey] = curTime
+            task.spawn(function() pcall(function() remote:InvokeServer(args) end) end)
+        end
+    end
+
+    if _G.AutoHarvest and not isTree and (st == ItemStates.RIPE or st == ItemStates.READY) then
+        SendRequest(ActiveRemotes.Harvest, vPos, key .. "_h")
+    end
+
+    if _G.AutoMine and not isFarmland then
+        local typeStr = block:GetAttribute("ID") and string.lower(ItemData[ItemData.IDLookup[block:GetAttribute("ID")]].TYPE or "") or ""
+        if string.find(string.lower(block.Name),"ore") or string.find(string.lower(block.Name),"rock") or string.find(string.lower(block.Name),"stone") or string.find(typeStr,"rock") or string.find(typeStr,"ore") or block:GetAttribute("IsOre") then
+            SendRequest(ActiveRemotes.Mine, vPos, key .. "_m")
+        end
+    end
+
+    if isFarmland then
+        if _G.AutoWater and st ~= ItemStates.WATERED and st ~= ItemStates.PERFECT then
+            SendRequest(ActiveRemotes.Water, vPos, key .. "_w")
+        end
+        
+        if _G.AutoFertilize and st ~= ItemStates.FERTILIZED and st ~= ItemStates.PERFECT then
+            SendRequest(ActiveRemotes.Fertilize, vPos, key .. "_f")
+        end
+
+        if _G.AutoFarm then
+            local x, y, z = tostring(vPos.X), tostring(vPos.Y + 1), tostring(vPos.Z)
+            if not (VoxelLookup[x] and VoxelLookup[x][y] and VoxelLookup[x][y][z]) then
+                SendRequest(ActiveRemotes.Plant, Vector3.new(vPos.X, vPos.Y+1, vPos.Z), key .. "_p")
             end
         end
     end
 
-    if _G.AutoWater and dist <= 18 and block.Name == "Farmland" and st ~= ItemStates.WATERED and st ~= ItemStates.PERFECT then
-        local wKey = key .. "_w"
-        if not Cache[wKey] or (curTime - Cache[wKey] > 0.45) then
-            Cache[wKey] = curTime
-            task.spawn(function() pcall(function() ActiveRemotes.Water:InvokeServer(vPos) end) end)
-        end
-    end
-
-    if _G.AutoFertilize and dist <= 18 and block.Name == "Farmland" and st ~= ItemStates.FERTILIZED and st ~= ItemStates.PERFECT then
-        local fKey = key .. "_f"
-        if not Cache[fKey] or (curTime - Cache[fKey] > 0.5) then
-            Cache[fKey] = curTime
-            task.spawn(function() pcall(function() ActiveRemotes.Fertilize:InvokeServer(vPos) end) end)
-        end
-    end
-
-    if _G.AutoFarm and dist <= 18 and block.Name == "Farmland" then
-        local x, y, z = tostring(vPos.X), tostring(vPos.Y + 1), tostring(vPos.Z)
-        if not (VoxelLookup[x] and VoxelLookup[x][y] and VoxelLookup[x][y][z]) then
-            local pKey = key .. "_p"
-            if not Cache[pKey] or (curTime - Cache[pKey] > 0.5) then
-                Cache[pKey] = curTime
-                task.spawn(function()
-                    pcall(function() ActiveRemotes.Plant:InvokeServer(Vector3.new(vPos.X, vPos.Y+1, vPos.Z)) end)
-                end)
-            end
-        end
-    end
-
-    if _G.AutoChop and dist <= 20 and isTree and not IsFruitTree(block) then
-        local cKey = key .. "_c"
-        if not Cache[cKey] or (curTime - Cache[cKey] > 0.2) then
-            Cache[cKey] = curTime
-            task.spawn(function() pcall(function() ActiveRemotes.Chop:InvokeServer(vPos) end) end)
-        end
+    if _G.AutoChop and isTree and not IsFruitTree(block) then
+        SendRequest(ActiveRemotes.Chop, vPos, key .. "_c")
     end
 end
 
--- [9] Loop principal (Idle = quase zero CPU, usa ipairs pra evitar erro do obfuscador)
+-- [9] Loop principal (Idle = quase zero CPU, Mobile Safe)
 task.spawn(function()
     local now = tick
     while true do
@@ -238,7 +225,7 @@ task.spawn(function()
         if not anyActive then
             task.wait(0.5)
         else
-            task.wait(0.06)
+            task.wait(0.15) -- Atraso para salvar o FPS no celular
             pcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -269,7 +256,6 @@ task.spawn(function()
                 end
 
                 local children = blocks:GetChildren()
-                -- Trocado #children por ipairs para não bugar no WeAreDevs Obfuscator
                 for i, child in ipairs(children) do
                     ProcessBlock(child, rootPos, ActiveRemotes, curTime)
                 end
@@ -279,7 +265,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- DSHubLibrary - Módulo UI Completo (Hub.lua)
+-- DSHubLibrary - Módulo UI Completo
 -- OTIMIZADO PARA MOBILE (Sem CanvasGroup/Blur)
 -- ==========================================
 
@@ -397,7 +383,7 @@ function DSHubLibrary.Init(options)
     MainContainer.BackgroundTransparency = 1
     MainContainer.Visible = false
 
-    -- Trocado CanvasGroup por Frame (MUITO mais leve no celular)
+    -- Frame normal (leve para celular)
     local Main = Instance.new("Frame", MainContainer)
     Main.Name = "MainFrame"
     Main.Size = UDim2.new(1, 0, 1, 0)
@@ -417,7 +403,7 @@ function DSHubLibrary.Init(options)
     MainStroke.Thickness = 0.8
     MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- Intro leve (sem BlurEffect)
+    -- Intro Rápida e Leve (sem BlurEffect)
     local function PlayIntro(onComplete)
         local IntroOverlay = Instance.new("Frame", ScreenGui)
         IntroOverlay.Size = UDim2.new(1, 0, 1, 0)
@@ -463,17 +449,17 @@ function DSHubLibrary.Init(options)
             createTween(IntroCard, 0.7, {BackgroundTransparency = 0}, Enum.EasingStyle.Back):Play()
             createTween(CardStroke, 0.6, {Transparency = 0}):Play()
 
-            task.wait(0.6)
+            task.wait(0.3)
             StatusSub.Text = "LOADING SCRIPT MODULES..."
-            task.wait(0.6)
+            task.wait(0.3)
             StatusSub.Text = "CONNECTING TO GAME ENVIRONMENT..."
-            task.wait(0.6)
+            task.wait(0.3)
             StatusSub.Text = "INITIALIZING " .. hubName .. "..."
-            task.wait(0.6)
+            task.wait(0.3)
             StatusSub.Text = "READY [" .. versionText .. "]"
 
             createTween(CoreSymbol, 0.6, {Rotation = 360}):Play()
-            task.wait(0.5)
+            task.wait(0.4)
 
             createTween(IntroCard, 0.5, {Size = UDim2.new(0, 370, 0, 210), BackgroundTransparency = 1}, Enum.EasingStyle.Quart, Enum.EasingDirection.In):Play()
             createTween(IntroOverlay, 0.5, {BackgroundTransparency = 1}):Play()
@@ -638,7 +624,7 @@ function DSHubLibrary.Init(options)
     createLabel(ProfileCard, UDim2.new(1, -34, 0, 12), UDim2.new(0, 32, 0, 4), HubLocalPlayer.DisplayName, THEME.Text, Enum.Font.GothamBold, 9, Enum.TextXAlignment.Left)
     local ProfileStatus = createLabel(ProfileCard, UDim2.new(1, -34, 0, 10), UDim2.new(0, 32, 0, 18), "60 FPS • 30ms", THEME.Accent, Enum.Font.GothamMedium, 8, Enum.TextXAlignment.Left)
 
-    -- Trocado RenderStepped por Heartbeat (mais leve)
+    -- Heartbeat em vez de RenderStepped
     task.spawn(function()
         local lastTime = os.clock()
         local frameCount = 0
@@ -731,7 +717,6 @@ function DSHubLibrary.Init(options)
             createTween(IconLabel, 0.15, {TextColor3 = THEME.Accent}):Play()
         end)
 
-        -- Trocado #Window.Tabs por next() pra evitar bug do obfuscador
         if next(Window.Tabs) == nil then
             Page.Visible = true
             TabBtn.BackgroundTransparency = 0.8
@@ -804,9 +789,7 @@ function DSHubLibrary.Init(options)
     runtime.Unloaded = false
     runtime._unloadCallbacks = {}
 
-    function runtime:Notify(_)
-        return false
-    end
+    function runtime:Notify(_) return false end
 
     function runtime:OnUnload(fn)
         if type(fn) == 'function' then table.insert(self._unloadCallbacks, fn) end
