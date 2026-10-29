@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- v2.1 (Mobile Optimized / Anti-Freeze / WeAreDevs Fix)
+-- v2.1 (Anti-Timeout / Anti-Freeze Mobile)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -16,17 +16,22 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer       = Players.LocalPlayer
 
--- [3] Modules do jogo
-local Modules = ReplicatedStorage:WaitForChild("Modules", 5)
+-- [3] Modules do jogo (Com respiro para não dar Timeout no Delta)
+local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
 if not Modules then
     warn("[DS HUB] Módulos do jogo não encontrados!")
     return
 end
 
+task.wait(0.2)
 local VoxelLookup   = require(Modules:WaitForChild("VoxelLookup"))
+task.wait(0.2)
 local ItemStates    = require(Modules.Databanks:WaitForChild("ItemStates"))
+task.wait(0.2)
 local ItemData      = require(Modules.Databanks:WaitForChild("ItemData"))
+task.wait(0.2)
 local FishingModule = require(Modules.Tools.Fishing)
+task.wait(0.2)
 local GlobalData    = require(Modules.Databanks:WaitForChild("GlobalData"))
 
 -- [4] Flags globais
@@ -121,7 +126,7 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock (Anti-Freeze + Otimizado)
+-- [8] ProcessBlock
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
@@ -212,7 +217,7 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     end
 end
 
--- [9] Loop principal (Idle = quase zero CPU, Mobile Safe)
+-- [9] Loop principal (RESPIRO A CADA 50 BLOCOS PARA NÃO CONGELAR)
 task.spawn(function()
     local now = tick
     while true do
@@ -225,7 +230,7 @@ task.spawn(function()
         if not anyActive then
             task.wait(0.5)
         else
-            task.wait(0.15) -- Atraso para salvar o FPS no celular
+            task.wait(0.15) 
             pcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -258,6 +263,11 @@ task.spawn(function()
                 local children = blocks:GetChildren()
                 for i, child in ipairs(children) do
                     ProcessBlock(child, rootPos, ActiveRemotes, curTime)
+                    
+                    -- AQUI ESTÁ O SEGREDO: A cada 50 blocos, ele dá 1 frame de respiro
+                    if i % 50 == 0 then
+                        task.wait()
+                    end
                 end
             end)
         end
@@ -265,8 +275,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- DSHubLibrary - Módulo UI Completo
--- OTIMIZADO PARA MOBILE (Sem CanvasGroup/Blur)
+-- DSHubLibrary - Módulo UI
 -- ==========================================
 
 local DSHubLibrary = {}
@@ -383,7 +392,6 @@ function DSHubLibrary.Init(options)
     MainContainer.BackgroundTransparency = 1
     MainContainer.Visible = false
 
-    -- Frame normal (leve para celular)
     local Main = Instance.new("Frame", MainContainer)
     Main.Name = "MainFrame"
     Main.Size = UDim2.new(1, 0, 1, 0)
@@ -403,7 +411,6 @@ function DSHubLibrary.Init(options)
     MainStroke.Thickness = 0.8
     MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
-    -- Intro Rápida e Leve (sem BlurEffect)
     local function PlayIntro(onComplete)
         local IntroOverlay = Instance.new("Frame", ScreenGui)
         IntroOverlay.Size = UDim2.new(1, 0, 1, 0)
@@ -624,7 +631,6 @@ function DSHubLibrary.Init(options)
     createLabel(ProfileCard, UDim2.new(1, -34, 0, 12), UDim2.new(0, 32, 0, 4), HubLocalPlayer.DisplayName, THEME.Text, Enum.Font.GothamBold, 9, Enum.TextXAlignment.Left)
     local ProfileStatus = createLabel(ProfileCard, UDim2.new(1, -34, 0, 10), UDim2.new(0, 32, 0, 18), "60 FPS • 30ms", THEME.Accent, Enum.Font.GothamMedium, 8, Enum.TextXAlignment.Left)
 
-    -- Heartbeat em vez de RenderStepped
     task.spawn(function()
         local lastTime = os.clock()
         local frameCount = 0
