@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- Uso: loadstring(game:HttpGet("URL_DO_GIST"))()
+-- v2.1 — Otimizado: loop idle + distance check antes de GetAttribute
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -122,20 +122,25 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock
+-- [8] ProcessBlock  🩹 PATCH 2 (distance check antes dos GetAttribute)
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
+    -- 1) posição (barato)
     local blockWorldPos
     if block:IsA("BasePart") then
         blockWorldPos = block.Position
     elseif block:IsA("Model") then
         blockWorldPos = block:GetPivot().Position
+    else
+        return
     end
-    if not blockWorldPos then return end
 
+    -- 2) descarta o que está longe ANTES de qualquer GetAttribute
     local dist = (blockWorldPos - rootPos).Magnitude
+    if dist > 20 then return end
 
+    -- 3) maçã (usa PromptPart, não VoxelPosition)
     if _G.AutoApple and block.Name == "Apple Tree" then
         local pp = block:FindFirstChild("PromptPart")
         local prompt = pp and pp:FindFirstChildOfClass("ProximityPrompt")
@@ -148,6 +153,13 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
         end
     end
 
+    -- 4) se nenhum auto "de voxel" está ligado, para aqui
+    if not (_G.AutoHarvest or _G.AutoMine or _G.AutoWater
+         or _G.AutoFertilize or _G.AutoFarm or _G.AutoChop) then
+        return
+    end
+
+    -- 5) só AGORA faz os GetAttribute (caros)
     local vPos = block:GetAttribute("VoxelPosition")
     if not vPos then return end
 
@@ -218,45 +230,55 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     end
 end
 
--- [9] Loop principal
+-- [9] Loop principal  🩹 PATCH 1 (idle = quase zero CPU)
 task.spawn(function()
     local now = tick
-    while task.wait(0.03) do
+    while true do
         if _G.DSHub_Kill then break end
-        pcall(function()
-            local char = LocalPlayer.Character
-            local root = char and char:FindFirstChild("HumanoidRootPart")
-            if not root or isTeleporting then return end
 
-            local blocks = workspace:FindFirstChild("LoadedBlocks")
-            if not blocks then return end
+        local anyActive = _G.AutoFarm or _G.AutoHarvest or _G.AutoWater
+                       or _G.AutoFertilize or _G.AutoMine or _G.AutoChop
+                       or _G.AutoApple
 
-            local ActiveRemotes = GetRemotes()
-            if not ActiveRemotes.Mine then return end
+        if not anyActive then
+            task.wait(0.5)  -- nada ligado: dorme 500ms
+        else
+            task.wait(0.06)  -- ativo: 16x/s (antes era 33x/s)
+            pcall(function()
+                local char = LocalPlayer.Character
+                local root = char and char:FindFirstChild("HumanoidRootPart")
+                if not root or isTeleporting then return end
 
-            local curTime = now()
-            local rootPos = root.Position
+                local blocks = workspace:FindFirstChild("LoadedBlocks")
+                if not blocks then return end
 
-            if _G.AutoWater then
-                for _, b in pairs(blocks:GetChildren()) do
-                    if b.Name == "Stone Well" and (b:GetAttribute("AlternativeState") or 0) > 0 then
-                        local rp = b:FindFirstChild("Root")
-                        if rp and (rp.Position - rootPos).Magnitude < 60 then
-                            if not Cache["Well"] or (curTime - Cache["Well"] > 3) then
-                                Cache["Well"] = curTime
-                                AdvancedGhostFill(rp.Position, rp:FindFirstChildOfClass("ProximityPrompt"))
+                local ActiveRemotes = GetRemotes()
+                if not ActiveRemotes.Mine then return end
+
+                local curTime = now()
+                local rootPos = root.Position
+
+                if _G.AutoWater then
+                    for _, b in pairs(blocks:GetChildren()) do
+                        if b.Name == "Stone Well" and (b:GetAttribute("AlternativeState") or 0) > 0 then
+                            local rp = b:FindFirstChild("Root")
+                            if rp and (rp.Position - rootPos).Magnitude < 60 then
+                                if not Cache["Well"] or (curTime - Cache["Well"] > 3) then
+                                    Cache["Well"] = curTime
+                                    AdvancedGhostFill(rp.Position, rp:FindFirstChildOfClass("ProximityPrompt"))
+                                end
+                                break
                             end
-                            break
                         end
                     end
                 end
-            end
 
-            local children = blocks:GetChildren()
-            for i = 1, #children do
-                ProcessBlock(children[i], rootPos, ActiveRemotes, curTime)
-            end
-        end)
+                local children = blocks:GetChildren()
+                for i = 1, #children do
+                    ProcessBlock(children[i], rootPos, ActiveRemotes, curTime)
+                end
+            end)
+        end
     end
 end)
 
@@ -266,13 +288,13 @@ end)
 
 local DSHubLibrary = {}
 
-local HubPlayers = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
-local Lighting = game:GetService("Lighting")
-local HttpService = game:GetService("HttpService")
-local HubLocalPlayer = HubPlayers.LocalPlayer or HubPlayers.PlayerAdded:Wait()
+local HubPlayers        = game:GetService("Players")
+local UserInputService  = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
+local Lighting          = game:GetService("Lighting")
+local HttpService       = game:GetService("HttpService")
+local HubLocalPlayer    = HubPlayers.LocalPlayer or HubPlayers.PlayerAdded:Wait()
 
 local THEME = {
     Background = Color3.fromRGB(0, 0, 0),
@@ -289,8 +311,8 @@ local THEME = {
 
 local function createTween(instance, duration, properties, style, direction)
     return TweenService:Create(instance, TweenInfo.new(
-        duration, 
-        style or Enum.EasingStyle.Quad, 
+        duration,
+        style or Enum.EasingStyle.Quad,
         direction or Enum.EasingDirection.Out
     ), properties)
 end
@@ -824,7 +846,6 @@ end
 
 -- ==========================================
 -- [10] UI — criação das abas e toggles
--- (agora DSHubLibrary já está definido acima)
 -- ==========================================
 
 local Hub = DSHubLibrary.Init({
@@ -855,4 +876,4 @@ GatherTab:CreateToggle("Auto Maçãs",   false, function(s) _G.AutoApple = s end
 local MiscTab = Hub:CreateTab("Outros", "🎣")
 MiscTab:CreateToggle("Auto Pesca", false, function(s) _G.AutoFishing = s end)
 
-print("[DS HUB] Carregado ✔")
+print("[DS HUB] Carregado ✔ (v2.1 otimizado)")
