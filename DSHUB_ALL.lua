@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- v2.1 — Otimizado: loop idle + distance check antes de GetAttribute
+-- v2.1 (Mobile Optimized / WeAreDevs Fix)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -91,12 +91,12 @@ local function AdvancedGhostFill(targetPos, prompt)
     end)
 end
 
--- [6] GC do cache
+-- [6] GC do cache (Corrigido erro do Delta)
 task.spawn(function()
     while task.wait(30) do
         if _G.DSHub_Kill then break end
         Cache = {}
-        collectgarbage("collect")
+        -- Removido collectgarbage que causava erro no Delta
     end
 end)
 
@@ -122,11 +122,10 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock  🩹 PATCH 2 (distance check antes dos GetAttribute)
+-- [8] ProcessBlock (Distance check antes dos GetAttribute)
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
-    -- 1) posição (barato)
     local blockWorldPos
     if block:IsA("BasePart") then
         blockWorldPos = block.Position
@@ -136,11 +135,9 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
         return
     end
 
-    -- 2) descarta o que está longe ANTES de qualquer GetAttribute
     local dist = (blockWorldPos - rootPos).Magnitude
     if dist > 20 then return end
 
-    -- 3) maçã (usa PromptPart, não VoxelPosition)
     if _G.AutoApple and block.Name == "Apple Tree" then
         local pp = block:FindFirstChild("PromptPart")
         local prompt = pp and pp:FindFirstChildOfClass("ProximityPrompt")
@@ -153,13 +150,11 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
         end
     end
 
-    -- 4) se nenhum auto "de voxel" está ligado, para aqui
     if not (_G.AutoHarvest or _G.AutoMine or _G.AutoWater
          or _G.AutoFertilize or _G.AutoFarm or _G.AutoChop) then
         return
     end
 
-    -- 5) só AGORA faz os GetAttribute (caros)
     local vPos = block:GetAttribute("VoxelPosition")
     if not vPos then return end
 
@@ -230,7 +225,7 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     end
 end
 
--- [9] Loop principal  🩹 PATCH 1 (idle = quase zero CPU)
+-- [9] Loop principal (Idle = quase zero CPU, usa ipairs pra evitar erro do obfuscador)
 task.spawn(function()
     local now = tick
     while true do
@@ -241,9 +236,9 @@ task.spawn(function()
                        or _G.AutoApple
 
         if not anyActive then
-            task.wait(0.5)  -- nada ligado: dorme 500ms
+            task.wait(0.5)
         else
-            task.wait(0.06)  -- ativo: 16x/s (antes era 33x/s)
+            task.wait(0.06)
             pcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -274,8 +269,9 @@ task.spawn(function()
                 end
 
                 local children = blocks:GetChildren()
-                for i = 1, #children do
-                    ProcessBlock(children[i], rootPos, ActiveRemotes, curTime)
+                -- Trocado #children por ipairs para não bugar no WeAreDevs Obfuscator
+                for i, child in ipairs(children) do
+                    ProcessBlock(child, rootPos, ActiveRemotes, curTime)
                 end
             end)
         end
@@ -284,6 +280,7 @@ end)
 
 -- ==========================================
 -- DSHubLibrary - Módulo UI Completo (Hub.lua)
+-- OTIMIZADO PARA MOBILE (Sem CanvasGroup/Blur)
 -- ==========================================
 
 local DSHubLibrary = {}
@@ -400,7 +397,8 @@ function DSHubLibrary.Init(options)
     MainContainer.BackgroundTransparency = 1
     MainContainer.Visible = false
 
-    local Main = Instance.new("CanvasGroup", MainContainer)
+    -- Trocado CanvasGroup por Frame (MUITO mais leve no celular)
+    local Main = Instance.new("Frame", MainContainer)
     Main.Name = "MainFrame"
     Main.Size = UDim2.new(1, 0, 1, 0)
     Main.BackgroundColor3 = THEME.Background
@@ -419,30 +417,20 @@ function DSHubLibrary.Init(options)
     MainStroke.Thickness = 0.8
     MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
+    -- Intro leve (sem BlurEffect)
     local function PlayIntro(onComplete)
-        local Blur = Instance.new("BlurEffect", Lighting)
-        Blur.Name = "DSHub_CinematicBlur_v1_0"
-        Blur.Size = 0
-
         local IntroOverlay = Instance.new("Frame", ScreenGui)
         IntroOverlay.Size = UDim2.new(1, 0, 1, 0)
         IntroOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
         IntroOverlay.BackgroundTransparency = 1
         IntroOverlay.ZIndex = 800
 
-        local ScannerLine = Instance.new("Frame", IntroOverlay)
-        ScannerLine.Size = UDim2.new(1, 0, 0, 2)
-        ScannerLine.Position = UDim2.new(0, 0, 0, -10)
-        ScannerLine.BackgroundColor3 = THEME.Accent
-        ScannerLine.BorderSizePixel = 0
-        ScannerLine.ZIndex = 801
-
-        local IntroCard = Instance.new("CanvasGroup", IntroOverlay)
+        local IntroCard = Instance.new("Frame", IntroOverlay)
         IntroCard.Size = UDim2.new(0, 340, 0, 190)
         IntroCard.AnchorPoint = Vector2.new(0.5, 0.5)
         IntroCard.Position = UDim2.new(0.5, 0, 0.5, 0)
         IntroCard.BackgroundColor3 = THEME.Background
-        IntroCard.GroupTransparency = 1
+        IntroCard.BackgroundTransparency = 1
         IntroCard.ZIndex = 802
         addCorner(IntroCard, 16)
 
@@ -471,11 +459,9 @@ function DSHubLibrary.Init(options)
         StatusSub.ZIndex = 803
 
         task.spawn(function()
-            createTween(Blur, 0.8, {Size = 24}):Play()
             createTween(IntroOverlay, 0.6, {BackgroundTransparency = 0.3}):Play()
-            createTween(IntroCard, 0.7, {GroupTransparency = 0}, Enum.EasingStyle.Back):Play()
+            createTween(IntroCard, 0.7, {BackgroundTransparency = 0}, Enum.EasingStyle.Back):Play()
             createTween(CardStroke, 0.6, {Transparency = 0}):Play()
-            createTween(ScannerLine, 1.2, {Position = UDim2.new(0, 0, 1, 10)}):Play()
 
             task.wait(0.6)
             StatusSub.Text = "LOADING SCRIPT MODULES..."
@@ -489,13 +475,11 @@ function DSHubLibrary.Init(options)
             createTween(CoreSymbol, 0.6, {Rotation = 360}):Play()
             task.wait(0.5)
 
-            createTween(IntroCard, 0.5, {Size = UDim2.new(0, 370, 0, 210), GroupTransparency = 1}, Enum.EasingStyle.Quart, Enum.EasingDirection.In):Play()
+            createTween(IntroCard, 0.5, {Size = UDim2.new(0, 370, 0, 210), BackgroundTransparency = 1}, Enum.EasingStyle.Quart, Enum.EasingDirection.In):Play()
             createTween(IntroOverlay, 0.5, {BackgroundTransparency = 1}):Play()
-            createTween(Blur, 0.5, {Size = 0}):Play()
 
             task.wait(0.5)
             IntroOverlay:Destroy()
-            Blur:Destroy()
 
             if onComplete then onComplete() end
         end)
@@ -654,10 +638,11 @@ function DSHubLibrary.Init(options)
     createLabel(ProfileCard, UDim2.new(1, -34, 0, 12), UDim2.new(0, 32, 0, 4), HubLocalPlayer.DisplayName, THEME.Text, Enum.Font.GothamBold, 9, Enum.TextXAlignment.Left)
     local ProfileStatus = createLabel(ProfileCard, UDim2.new(1, -34, 0, 10), UDim2.new(0, 32, 0, 18), "60 FPS • 30ms", THEME.Accent, Enum.Font.GothamMedium, 8, Enum.TextXAlignment.Left)
 
+    -- Trocado RenderStepped por Heartbeat (mais leve)
     task.spawn(function()
         local lastTime = os.clock()
         local frameCount = 0
-        RunService.RenderStepped:Connect(function()
+        RunService.Heartbeat:Connect(function()
             frameCount = frameCount + 1
             local currentTime = os.clock()
             if currentTime - lastTime >= 1 then
@@ -746,7 +731,8 @@ function DSHubLibrary.Init(options)
             createTween(IconLabel, 0.15, {TextColor3 = THEME.Accent}):Play()
         end)
 
-        if #Window.Tabs == 0 then
+        -- Trocado #Window.Tabs por next() pra evitar bug do obfuscador
+        if next(Window.Tabs) == nil then
             Page.Visible = true
             TabBtn.BackgroundTransparency = 0.8
             TextLabel.TextColor3 = THEME.Text
@@ -876,4 +862,4 @@ GatherTab:CreateToggle("Auto Maçãs",   false, function(s) _G.AutoApple = s end
 local MiscTab = Hub:CreateTab("Outros", "🎣")
 MiscTab:CreateToggle("Auto Pesca", false, function(s) _G.AutoFishing = s end)
 
-print("[DS HUB] Carregado ✔ (v2.1 otimizado)")
+print("[DS HUB] Carregado ✔ (v2.1 Mobile Optimized)")
