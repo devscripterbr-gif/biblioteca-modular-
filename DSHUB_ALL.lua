@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- v2.1 (Mobile Optimized / Anti-Freeze / Fast Farm)
+-- FS v2.1 BETA (Mobile Optimized / Anti-Freeze / Fast Farm)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -833,8 +833,8 @@ end
 -- ==========================================
 
 local Hub = DSHubLibrary.Init({
-    Name       = "DS HUB FS",
-    Version    = "v2.1",
+    Name       = "DS HUB",
+    Version    = "FS v2.1 BETA",
     ConfigFile = "DSHub_Config_v2_1.json",
 })
 
@@ -860,4 +860,4 @@ GatherTab:CreateToggle("Auto Maçãs",   false, function(s) _G.AutoApple = s end
 local MiscTab = Hub:CreateTab("Outros", "🎣")
 MiscTab:CreateToggle("Auto Pesca", false, function(s) _G.AutoFishing = s end)
 
-print("[DS HUB] Carregado ✔ (v2.1 Fast Farm)")
+print("[DS HUB] Carregado ✔ (FS v2.1 BETA)")
