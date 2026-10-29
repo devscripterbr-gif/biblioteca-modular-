@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- FS v2.1 BETA (Mobile Optimized / Anti-Freeze / Fast Farm)
+-- FS v2.1 BETA (Engine Otimizada / Zero Memory Leak)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -14,9 +14,10 @@ _G.DSHub_Kill = false
 -- [2] Services
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
 local LocalPlayer       = Players.LocalPlayer
 
--- [3] Modules do jogo (Com respiro para não dar Timeout no Delta)
+-- [3] Modules do jogo
 local Modules = ReplicatedStorage:WaitForChild("Modules", 10)
 if not Modules then
     warn("[DS HUB] Módulos do jogo não encontrados!")
@@ -126,7 +127,7 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock (Otimizado e Rápido)
+-- [8] ProcessBlock (Otimizado)
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
@@ -167,6 +168,7 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     local isFarmland = (block.Name == "Farmland")
     local isTree = false
     
+    -- OTIMIZAÇÃO: Só faz o parse do nome se realmente precisar
     if _G.AutoChop or _G.AutoHarvest then
         local lowerName = string.lower(block.Name)
         local itemID = block:GetAttribute("ID")
@@ -177,7 +179,6 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
                or string.find(lowerName, "log")
     end
 
-    -- Função para enviar comando com cooldown e repetição (cliques rápidos)
     local function SendRequest(remote, args, cacheKey, cooldown, repeats)
         if not Cache[cacheKey] or (curTime - Cache[cacheKey] > cooldown) then
             Cache[cacheKey] = curTime
@@ -190,12 +191,10 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
         end
     end
 
-    -- AUTO HARVEST: 0.2s de cooldown (Rápido)
     if _G.AutoHarvest and not isTree and (st == ItemStates.RIPE or st == ItemStates.READY) then
         SendRequest(ActiveRemotes.Harvest, vPos, key .. "_h", 0.2, 1)
     end
 
-    -- AUTO MINE: 0.15s de cooldown e 3 batidas (Quebra rápido)
     if _G.AutoMine and not isFarmland then
         local typeStr = block:GetAttribute("ID") and string.lower(ItemData[ItemData.IDLookup[block:GetAttribute("ID")]].TYPE or "") or ""
         if string.find(string.lower(block.Name),"ore") or string.find(string.lower(block.Name),"rock") or string.find(string.lower(block.Name),"stone") or string.find(typeStr,"rock") or string.find(typeStr,"ore") or block:GetAttribute("IsOre") then
@@ -220,15 +219,17 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
         end
     end
 
-    -- AUTO CHOP: 0.15s de cooldown e 3 batidas (Derruba rápido)
     if _G.AutoChop and isTree and not IsFruitTree(block) then
         SendRequest(ActiveRemotes.Chop, vPos, key .. "_c", 0.15, 3)
     end
 end
 
--- [9] Loop principal (Respiro mantido para não travar)
+-- [9] Loop principal (Otimização Extrema de Memória)
 task.spawn(function()
     local now = tick
+    local cachedChildren = {}
+    local lastCacheUpdate = 0
+
     while true do
         if _G.DSHub_Kill then break end
 
@@ -254,8 +255,14 @@ task.spawn(function()
                 local curTime = now()
                 local rootPos = root.Position
 
+                -- OTIMIZAÇÃO: Atualiza a lista de blocos a cada 2 segundos, não a cada 0.1s
+                if curTime - lastCacheUpdate > 2 then
+                    cachedChildren = blocks:GetChildren()
+                    lastCacheUpdate = curTime
+                end
+
                 if _G.AutoWater then
-                    for _, b in pairs(blocks:GetChildren()) do
+                    for _, b in pairs(cachedChildren) do
                         if b.Name == "Stone Well" and (b:GetAttribute("AlternativeState") or 0) > 0 then
                             local rp = b:FindFirstChild("Root")
                             if rp and (rp.Position - rootPos).Magnitude < 60 then
@@ -269,11 +276,9 @@ task.spawn(function()
                     end
                 end
 
-                local children = blocks:GetChildren()
-                for i, child in ipairs(children) do
+                for i, child in ipairs(cachedChildren) do
                     ProcessBlock(child, rootPos, ActiveRemotes, curTime)
                     
-                    -- Respiro para o celular não congelar (a cada 50 blocos)
                     if i % 50 == 0 then
                         task.wait()
                     end
@@ -284,7 +289,7 @@ task.spawn(function()
 end)
 
 -- ==========================================
--- DSHubLibrary - Módulo UI
+-- DSHubLibrary - Módulo UI (Otimizado)
 -- ==========================================
 
 local DSHubLibrary = {}
@@ -292,7 +297,6 @@ local DSHubLibrary = {}
 local HubPlayers        = game:GetService("Players")
 local UserInputService  = game:GetService("UserInputService")
 local TweenService      = game:GetService("TweenService")
-local RunService        = game:GetService("RunService")
 local Lighting          = game:GetService("Lighting")
 local HttpService       = game:GetService("HttpService")
 local HubLocalPlayer    = HubPlayers.LocalPlayer or HubPlayers.PlayerAdded:Wait()
@@ -640,21 +644,18 @@ function DSHubLibrary.Init(options)
     createLabel(ProfileCard, UDim2.new(1, -34, 0, 12), UDim2.new(0, 32, 0, 4), HubLocalPlayer.DisplayName, THEME.Text, Enum.Font.GothamBold, 9, Enum.TextXAlignment.Left)
     local ProfileStatus = createLabel(ProfileCard, UDim2.new(1, -34, 0, 10), UDim2.new(0, 32, 0, 18), "60 FPS • 30ms", THEME.Accent, Enum.Font.GothamMedium, 8, Enum.TextXAlignment.Left)
 
+    -- OTIMIZAÇÃO 3: O FPS counter só atualiza 1 vez por segundo, não 60 vezes!
+    local updateFpsCounter = false
     task.spawn(function()
-        local lastTime = os.clock()
-        local frameCount = 0
-        RunService.Heartbeat:Connect(function()
-            frameCount = frameCount + 1
-            local currentTime = os.clock()
-            if currentTime - lastTime >= 1 then
-                local fps = math.floor(frameCount / (currentTime - lastTime))
+        while true do
+            task.wait(1)
+            if updateFpsCounter then
+                local fps = math.floor(1 / RunService.Heartbeat:Wait())
                 local ping = 0
                 pcall(function() ping = math.floor(HubLocalPlayer:GetNetworkPing() * 1000) end)
                 ProfileStatus.Text = string.format("%d FPS • %dms", fps, ping)
-                frameCount = 0
-                lastTime = currentTime
             end
-        end)
+        end
     end)
 
     local ContentContainer = Instance.new("Frame", InnerWrapper)
@@ -813,6 +814,7 @@ function DSHubLibrary.Init(options)
     function runtime:Unload()
         if self.Unloaded then return end
         self.Unloaded = true
+        updateFpsCounter = false
         for _, fn in ipairs(self._unloadCallbacks) do pcall(fn) end
         if self.ScreenGui and self.ScreenGui.Parent then self.ScreenGui:Destroy() end
     end
@@ -824,7 +826,10 @@ function DSHubLibrary.Init(options)
         runtime:Unload()
     end)
 
-    PlayIntro(function() MainContainer.Visible = true end)
+    PlayIntro(function() 
+        MainContainer.Visible = true 
+        updateFpsCounter = true -- Ativa o FPS counter só depois que a UI abre
+    end)
     return runtime
 end
 
