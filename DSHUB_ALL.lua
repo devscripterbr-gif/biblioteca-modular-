@@ -1,6 +1,6 @@
 -- ============================================================
 -- DSHUB_ALL.lua — Farm Hub unificado (auto-contido)
--- v2.1 (Anti-Timeout / Anti-Freeze Mobile)
+-- v2.1 (Mobile Optimized / Anti-Freeze / Fast Farm)
 -- ============================================================
 
 -- [1] Mata instância anterior
@@ -126,7 +126,7 @@ if not _G.DSHub_FishingHooked then
     end
 end
 
--- [8] ProcessBlock
+-- [8] ProcessBlock (Otimizado e Rápido)
 local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     if isTeleporting or _G.DSHub_Kill then return end
 
@@ -140,7 +140,7 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
     end
 
     local dist = (blockWorldPos - rootPos).Magnitude
-    if dist > 20 then return end
+    if dist > 22 then return end
 
     if _G.AutoApple and block.Name == "Apple Tree" then
         local pp = block:FindFirstChild("PromptPart")
@@ -177,47 +177,56 @@ local function ProcessBlock(block, rootPos, ActiveRemotes, curTime)
                or string.find(lowerName, "log")
     end
 
-    local function SendRequest(remote, args, cacheKey)
-        if not Cache[cacheKey] or (curTime - Cache[cacheKey] > 0.4) then
+    -- Função para enviar comando com cooldown e repetição (cliques rápidos)
+    local function SendRequest(remote, args, cacheKey, cooldown, repeats)
+        if not Cache[cacheKey] or (curTime - Cache[cacheKey] > cooldown) then
             Cache[cacheKey] = curTime
-            task.spawn(function() pcall(function() remote:InvokeServer(args) end) end)
+            task.spawn(function()
+                for i = 1, (repeats or 1) do
+                    pcall(function() remote:InvokeServer(args) end)
+                    if repeats and i < repeats then task.wait(0.05) end
+                end
+            end)
         end
     end
 
+    -- AUTO HARVEST: 0.2s de cooldown (Rápido)
     if _G.AutoHarvest and not isTree and (st == ItemStates.RIPE or st == ItemStates.READY) then
-        SendRequest(ActiveRemotes.Harvest, vPos, key .. "_h")
+        SendRequest(ActiveRemotes.Harvest, vPos, key .. "_h", 0.2, 1)
     end
 
+    -- AUTO MINE: 0.15s de cooldown e 3 batidas (Quebra rápido)
     if _G.AutoMine and not isFarmland then
         local typeStr = block:GetAttribute("ID") and string.lower(ItemData[ItemData.IDLookup[block:GetAttribute("ID")]].TYPE or "") or ""
         if string.find(string.lower(block.Name),"ore") or string.find(string.lower(block.Name),"rock") or string.find(string.lower(block.Name),"stone") or string.find(typeStr,"rock") or string.find(typeStr,"ore") or block:GetAttribute("IsOre") then
-            SendRequest(ActiveRemotes.Mine, vPos, key .. "_m")
+            SendRequest(ActiveRemotes.Mine, vPos, key .. "_m", 0.15, 3)
         end
     end
 
     if isFarmland then
         if _G.AutoWater and st ~= ItemStates.WATERED and st ~= ItemStates.PERFECT then
-            SendRequest(ActiveRemotes.Water, vPos, key .. "_w")
+            SendRequest(ActiveRemotes.Water, vPos, key .. "_w", 0.35, 1)
         end
         
         if _G.AutoFertilize and st ~= ItemStates.FERTILIZED and st ~= ItemStates.PERFECT then
-            SendRequest(ActiveRemotes.Fertilize, vPos, key .. "_f")
+            SendRequest(ActiveRemotes.Fertilize, vPos, key .. "_f", 0.35, 1)
         end
 
         if _G.AutoFarm then
             local x, y, z = tostring(vPos.X), tostring(vPos.Y + 1), tostring(vPos.Z)
             if not (VoxelLookup[x] and VoxelLookup[x][y] and VoxelLookup[x][y][z]) then
-                SendRequest(ActiveRemotes.Plant, Vector3.new(vPos.X, vPos.Y+1, vPos.Z), key .. "_p")
+                SendRequest(ActiveRemotes.Plant, Vector3.new(vPos.X, vPos.Y+1, vPos.Z), key .. "_p", 0.35, 1)
             end
         end
     end
 
+    -- AUTO CHOP: 0.15s de cooldown e 3 batidas (Derruba rápido)
     if _G.AutoChop and isTree and not IsFruitTree(block) then
-        SendRequest(ActiveRemotes.Chop, vPos, key .. "_c")
+        SendRequest(ActiveRemotes.Chop, vPos, key .. "_c", 0.15, 3)
     end
 end
 
--- [9] Loop principal (RESPIRO A CADA 50 BLOCOS PARA NÃO CONGELAR)
+-- [9] Loop principal (Respiro mantido para não travar)
 task.spawn(function()
     local now = tick
     while true do
@@ -230,7 +239,7 @@ task.spawn(function()
         if not anyActive then
             task.wait(0.5)
         else
-            task.wait(0.15) 
+            task.wait(0.1) 
             pcall(function()
                 local char = LocalPlayer.Character
                 local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -264,7 +273,7 @@ task.spawn(function()
                 for i, child in ipairs(children) do
                     ProcessBlock(child, rootPos, ActiveRemotes, curTime)
                     
-                    -- AQUI ESTÁ O SEGREDO: A cada 50 blocos, ele dá 1 frame de respiro
+                    -- Respiro para o celular não congelar (a cada 50 blocos)
                     if i % 50 == 0 then
                         task.wait()
                     end
@@ -851,4 +860,4 @@ GatherTab:CreateToggle("Auto Maçãs",   false, function(s) _G.AutoApple = s end
 local MiscTab = Hub:CreateTab("Outros", "🎣")
 MiscTab:CreateToggle("Auto Pesca", false, function(s) _G.AutoFishing = s end)
 
-print("[DS HUB] Carregado ✔ (v2.1 Mobile Optimized)")
+print("[DS HUB] Carregado ✔ (v2.1 Fast Farm)")
