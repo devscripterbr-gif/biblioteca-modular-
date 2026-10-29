@@ -16,30 +16,6 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer       = Players.LocalPlayer
 
--- [3] Carrega a biblioteca de UI via loadstring
-local LIB_URL = "https://raw.githubusercontent.com/devscripterbr-gif/biblioteca-modular-/main/Hub.lua"
-
-local DSHubLibrary
-do
-    local ok, src = pcall(game.HttpGet, game, LIB_URL)
-    if not ok or not src or src == "" then
-        warn("[DS HUB] Falha ao baixar biblioteca:", LIB_URL)
-        return
-    end
-    local fn, err = loadstring(src)
-    if not fn then
-        warn("[DS HUB] Erro compilando biblioteca:", err)
-        return
-    end
-    local ok2, lib = pcall(fn)
-    if not ok2 or type(lib) ~= "table" or not lib.Init then
-        warn("[DS HUB] Biblioteca inválida (sem Init).")
-        return
-    end
-    DSHubLibrary = lib
-    _G.DSHubLibrary = lib
-end
-
 -- [4] Modules do jogo
 local Modules = ReplicatedStorage:WaitForChild("Modules", 5)
 if not Modules then
